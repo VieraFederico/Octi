@@ -16,6 +16,13 @@
   - Every module, test and decision must be explainable by the student in an oral exam: explain the
     *why* of each piece as it is written.
   - Decisions taken during implementation go to `ARTIFACTS/DECISIONS.md` as `S00-D-NNN` (D-004).
+  - **The student creates the project venv and installs `requirements.txt` when asked** (after the
+    iteration's files exist). Tests are run inside that venv; Claude never creates or modifies it.
+  - **Course credits:** `ROOT/sources/` is local and git-ignored, so shipped files (code comments,
+    README) never cite `sources/...` paths. Code comments say e.g. "pattern adapted from the course's
+    Lab 02 (Memory) — see README › Credits"; the README ends with a **Credits** section naming each
+    course source by title (e.g. "Laboratorio 02 — Memory, cátedra Sistemas Multiagente I, ITBA").
+    Plan-internal "Reads" paths below are for the implementer only.
 - **Summary:** Build Octi's foundation: typed safe configuration, an explicit error tree, redacting
   logging, LiteLLM factories, the Pinecone index setup and check, a service-check script, an offline
   test harness, and a chat-first Catppuccin Streamlit shell with an animated ASCII logo, a "New chat"
@@ -113,7 +120,8 @@ fully tested offline, with guards that make the test run unable to touch the net
 **Reads**: Artifact Protocol steps 1–5; spec §4 "Configuration" and "Errors and logging", §5 BR-002,
 BR-003, BR-005, BR-009, BR-010, BR-011, §7 (env table, error tree); `ROOT/.env.example` (never
 `ROOT/.env`); course pattern for redaction: `ROOT/sources/Labos/02-memory/src/config.py`
-(`MIN_REDACTABLE_KEY`, `redact`) — reuse the idea, credit it in a code comment.
+(`MIN_REDACTABLE_KEY`, `redact`) — reuse the idea; the code comment credits "the course's Lab 02
+(Memory) — see README › Credits", never the `sources/` path.
 
 **Scope**:
 - Create the folder skeleton of the file map (empty `__init__.py` files, `assets/`, `tests/` tree).
@@ -378,7 +386,11 @@ AppTest limitations recorded.
     built-in client retries and the difference from the course labs (D-026, FR-036), index created
     only by the script (D-010), Catppuccin theme and logo frames folder (D-019, D-020, D-029);
   - operational notes: known gaps (agents arrive in specs 01/02), troubleshooting from iteration
-    gotchas, how to replace the logo frames.
+    gotchas, how to replace the logo frames;
+  - **Credits** (last section): every course source reused, by title — e.g. "Laboratorio 02 —
+    Memory (cátedra Sistemas Multiagente I, ITBA): secret-redaction minimum length", the course's
+    reuse guide / LiteLLM notebook for the `/v1/models` check — plus external libraries' docs if code
+    was adapted from them (assignment §11).
   - No references to the plan, the spec or the artifact directory.
 - Artifacts: final `CONTEXT.md` describing the shipped system; record
   `iterations/06-live-and-readme.md`.

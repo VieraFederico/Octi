@@ -1,0 +1,11 @@
+# Pinned dependencies (D-006). Only what the current code uses; later specs add their own.
+langchain-core==1.6.6
+langchain-openai==1.6.7
+langsmith==0.14.4
+pinecone==10.0.0
+pydantic==2.13.5
+python-dotenv==1.2.4
+streamlit==1.65.0
+
+# Tests
+pytest==9.1.1

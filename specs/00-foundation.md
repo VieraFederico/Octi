@@ -212,7 +212,8 @@ base before the deadline) and the graders (a setup they can reproduce and verify
   their own variables from the environment (that is why `load_dotenv()` runs first).
 - **BR-003** — No secret value ever appears in UI text, stdout of scripts, log lines, exception
   messages, prompts, graph state or traces. *Rationale:* assignment §11, CLAUDE.md. *Exceptions:*
-  the three client factories unwrap secrets to construct clients. *Scope:* spec 00 verifies UI,
+  the three client factories unwrap secrets to construct clients, and the log redactor reads them to
+  remove them from log text (FR-009). *Scope:* spec 00 verifies UI,
   script, log and exception output; the prompt, graph-state and trace parts get their VCs in specs
   01/02.
 - **BR-004** — The app never creates, deletes or modifies the Pinecone index. *Rationale:* D-010.
