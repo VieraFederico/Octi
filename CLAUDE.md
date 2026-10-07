@@ -9,7 +9,7 @@ Two-agent QA system over tables in PDFs: **Ingestion agent** (PDF → tables →
 The student must understand and be able to explain every line in an oral exam (assignment §11). Therefore:
 
 - **Claude proposes, the student decides.** Never make a design decision silently — agent graph shape, nodes, state fields, prompts, schemas, retry limits, storage, sandbox approach, library choices. Present options with a recommendation and wait.
-- Every accepted decision is logged in `DECISIONS.md` (id, decision, alternatives, why). If code needs a decision not in the log, stop and ask.
+- Every accepted decision is logged (id, decision, alternatives, why). Project-wide decisions go in the root `DECISIONS.md` (IDs `D-NNN`); spec-local decisions go in that spec's `specs/NN-name-plan-artifacts/DECISIONS.md` (IDs `SNN-D-NNN`); decisions made while writing a spec are also folded into the spec text. If code needs a decision not in either log, stop and ask.
 - Explain the *why* of each piece as it is built (RAG, tools, prompts, LangGraph state/edges), linking to the course material when relevant.
 - Prefer small steps the student can review over large batches. Deadline pressure never justifies lowering quality or skipping explanation.
 
@@ -18,6 +18,16 @@ The student must understand and be able to explain every line in an oral exam (a
 - **Claude never commits, pushes, or rewrites git history.** Only the student commits.
 - After each plan iteration (and before finishing a plan), stop and wait for the student to review the code. Do not start the next iteration until the student says so.
 
+## Secrets (`.env`)
+
+- **Claude never reads, edits, copies, greps, prints or otherwise exposes `.env`** (or `.env.local`, `.env.*` except `.env.example`), not even to "check" a value. Variable names come from `.env.example`; the student manages `.env`.
+- Enforced by `.claude/settings.json` (deny rules + `PreToolUse` hook `.claude/hooks/protect_env.py`). Never disable or work around it.
+
+## Environment and dependencies
+
+- All Python runs inside a virtual environment that **the student creates**.
+- **Claude never installs or downloads anything** (no `pip install`, `uv add`, installers, `curl | sh`). Claude writes/updates the dependency file and recommends commands; the student runs them.
+
 ## Workflow: Spec-Driven Development
 
 Follow the course's SDD method: spec 00 sets up and grounds the project; later specs refine on top of it; each plan iteration ends with all tests green and no regressions before moving on (TDD).
@@ -25,9 +35,9 @@ Follow the course's SDD method: spec 00 sets up and grounds the project; later s
 Per spec, in order:
 
 1. `/write-spec` — discovery with the student, produce `specs/NN-name.md`
-2. `/review-spec` — fix gaps before planning
+2. `/review-spec` — present the findings, then **stop and wait** for the student to accept, reject or adjust each one before editing the spec
 3. `/write-spec-plan` — iterations in `specs/NN-name-plan.md`
-4. `/implement-spec-plan` — one iteration at a time, verify acceptance criteria, student reviews each iteration
+4. `/implement-spec-plan` — one iteration at a time, verify acceptance criteria, then **stop and wait** for the student's review before starting the next iteration
 5. `/verify-spec` — end-to-end check against the spec
 
 Do not start a spec before the previous one is verified, unless the student says so.

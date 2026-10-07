@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Read(**/.env)",
+      "Read(./.env.local)",
+      "Edit(./.env)",
+      "Edit(**/.env)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/protect_env.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
