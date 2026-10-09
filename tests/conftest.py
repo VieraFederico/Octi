@@ -9,8 +9,10 @@ Tests marked `live` skip both guards: they are the only ones allowed to use real
 import socket
 from collections.abc import Callable, Mapping
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+from pinecone import NotFoundError
 
 from services import settings as settings_module
 from services.settings import Settings
@@ -91,3 +93,42 @@ def make_settings(fake_env: dict[str, str]) -> Callable[..., Settings]:
 def env_without(env: Mapping[str, str], *keys: str) -> dict[str, str]:
     """Copy of `env` with `keys` removed."""
     return {key: value for key, value in env.items() if key not in keys}
+
+
+class StubPineconeClient:
+    """Stands in for `pinecone.Pinecone` and records every call made to it.
+
+    `index` is the existing index as `(dimension, metric)`, or `None` when it does not exist.
+    `error` is raised by every call, to simulate a connection or authentication failure.
+    """
+
+    def __init__(self, index: tuple[int, object] | None = None, error: Exception | None = None) -> None:
+        self.index = index
+        self.error = error
+        self.calls: list[str] = []
+        self.create_kwargs: dict[str, object] = {}
+
+    def describe_index(self, name: str) -> SimpleNamespace:
+        self.calls.append("describe_index")
+        if self.error is not None:
+            raise self.error
+        if self.index is None:
+            raise NotFoundError()
+        dimension, metric = self.index
+        return SimpleNamespace(name=name, dimension=dimension, metric=metric)
+
+    def create_index(self, *, name: str, dimension: int, metric: str, spec: object, timeout: int) -> None:
+        self.calls.append("create_index")
+        self.create_kwargs = {"name": name, "dimension": dimension, "metric": metric, "spec": spec, "timeout": timeout}
+        self.index = (dimension, metric)
+
+    def delete_index(self, *_args: object, **_kwargs: object) -> None:
+        self.calls.append("delete_index")
+
+    def configure_index(self, *_args: object, **_kwargs: object) -> None:
+        self.calls.append("configure_index")
+
+    @property
+    def write_calls(self) -> list[str]:
+        """Every call that would create, delete or change an index."""
+        return [call for call in self.calls if call != "describe_index"]

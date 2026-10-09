@@ -2,7 +2,7 @@
 
 Two-agent QA system over tables in PDFs: **Ingestion agent** (PDF → tables → LLM metadata → Pinecone) and **Analyst agent** (question → retrieve tables → generate Python → sandboxed run → self-correct → answer with `answered` / `partial` / `cannot_answer`). Streamlit UI. Individual assignment.
 
-**Deadline:** Wednesday 2026-10-07, 23:59. Commit timestamp must be before it.
+**Deadline:** Sunday 2026-10-11, 23:59 (extended from 2026-10-07). Commit timestamp must be before it.
 
 ## Ownership rule (most important)
 
