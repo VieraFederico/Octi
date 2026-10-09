@@ -53,3 +53,45 @@
 **Decision**: LangChain accepts `SecretStr` directly, so `make_chat_model` / `make_embeddings` pass it without unwrapping. Only `make_pinecone_client` (in `services/vector_store.py`) calls `get_secret_value()`. The setup script exposes `main(settings=None, client=None)` as its test seam.
 **Rejected**: Unwrapping in all factories (more places holding plain keys).
 **Consequences**: BR-003's exception now applies in practice to one factory plus the log redactor; the spec text still reads "three factories" (allowed, not required).
+
+## S00-D-010: Each service check builds its own client  (Iteration 3)
+**Context**: The first draft built every client up front; one constructor failure (LangSmith's sends `GET /info`) turned all five service lines into FAIL without running them (simplicity audit 2026-10-09, finding 1).
+**Decision**: `services.health.Clients` holds one factory per service; each `check_*` calls its factory inside its own guarded step (spec FR-017, VC-022a).
+**Rejected**: An aggregate `Services` object built once; a lazy client container.
+**Consequences**: A check may build a client the previous check also built (cheap, no network except LangSmith).
+
+## S00-D-011: LiteLLM error mapping lives in `services.llm.translate_proxy_errors`  (Iteration 3)
+**Context**: FR-008 for the proxy; agents in specs 01/02 need the same mapping.
+**Decision**: 401/403 → `ProxyAuthenticationError`; 404 → `ModelNotAvailableError`; connection error / timeout → `ProxyUnreachableError`; any other `openai.APIError` → `ProxyUnreachableError` whose message shows only the HTTP status.
+**Rejected**: A leaf per HTTP status — the user's action is the same (BR-011).
+**Consequences**: Agents wrap model calls in `with translate_proxy_errors():`.
+
+## S00-D-012: LangSmith check = tracing on + `list_projects(limit=1)`  (Iteration 3)
+**Context**: FR-015 needs one authenticated request; the client constructor already makes a request.
+**Decision**: Tracing off → FAIL without building a client (D-024). Otherwise build the client and read one project; `LangSmithAuthError` → `TracingAuthenticationError`, any other `LangSmithError` → `TracingUnreachableError`.
+**Rejected**: `read_project(name)` — the project does not exist before the first trace (404).
+**Consequences**: Client timeout = `LLM_TIMEOUT_SECONDS`.
+
+## S00-D-013: Test layout — `conftest.py` is wiring, `tests/fakes.py` holds fakes  (Iteration 3)
+**Context**: `conftest.py` mixed pytest wiring with stubs; seven test files imported from it and one test file imported another (audit finding 7).
+**Decision**: `conftest.py` keeps only the autouse guards and the `fake_env` / `make_settings` fixtures. Fake keys, stubs and the factory helpers `always`, `failing`, `healthy_clients` live in the plain module `tests/fakes.py`. Fake openai errors are built with `httpx2`, the HTTP library openai 3.x uses (transitive dependency).
+**Rejected**: Keeping helpers in `conftest.py` (pytest advises against importing it).
+**Consequences**: "In a test's parameters → conftest; in an import line → fakes."
+
+## S00-D-014: Git safety-net edge cases are SKIPPED, never FAIL  (Iteration 3)
+**Context**: FR-016 defines OK / FAIL / skipped (not a git repository); git may also be missing or hang.
+**Decision**: git not installed, timeout (10 s) or any other unexpected answer → SKIPPED with a reason. Only "the file is tracked" is a FAIL.
+**Rejected**: Failing the run when git itself misbehaves — not the user's secrets problem.
+**Consequences**: A SKIPPED line never changes the exit code.
+
+## S00-D-015: Simplicity audit applied (spec v0.6)  (Iteration 3)
+**Context**: Audit of 2026-10-09; the student accepted items 1, A, C, D, F, G, H, I, M and rejected B (keep the git check) and E (keep the UI polish).
+**Decision**: Abstract-base guard and `IndexNotFoundError` removed (root D-027 amended); models check kept; one live test runs the service check; logging/retry/latency wording scoped; `CONTEXT.md` interfaces as pointers; minimal README now; models per root D-033; tracing-defaults watchpoint as spec A-006.
+**Rejected**: Flattening the error tree to four classes (more churn than value).
+**Consequences**: Iterations 4–5 keep the full UI scope; Iteration 6 writes one live test, not three.
+
+## S00-D-016: One module per external service  (Iteration 3)
+**Context**: The student asked for separation of concerns: `health.py` held the LangSmith factory, the LangSmith error mapping and the proxy model listing.
+**Decision**: Each external service has one module holding its client factory and its error translation: `services/llm.py` (LiteLLM, incl. `list_proxy_models`), `services/vector_store.py` (Pinecone), new `services/tracing.py` (LangSmith; not named `langsmith.py`, which would shadow the library). `services/health.py` only orchestrates. `run_git_in_repo` stays in `health.py` (its only user).
+**Rejected**: Leaving factories in `health.py`; a folder per service (too small to split today).
+**Consequences**: Agents import factories and translators from the service modules, never from `health.py`.

@@ -1,4 +1,7 @@
-"""Configuration is read in exactly one place (spec BR-002, VC-007c)."""
+"""Configuration is read in exactly one place (spec BR-002, VC-007c).
+
+A narrow text scan (a lint), not a proof: it catches the usual `os.environ` / `os.getenv` spellings.
+"""
 
 import re
 from pathlib import Path

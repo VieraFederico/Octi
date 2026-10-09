@@ -4,7 +4,7 @@ import pytest
 from pinecone import PineconeConnectionError, UnauthorizedError
 
 from scripts.setup_index import main
-from tests.conftest import FAKE_PINECONE_KEY, StubPineconeClient
+from tests.fakes import FAKE_PINECONE_KEY, StubPineconeClient
 
 
 def test_creates_missing_index_and_says_created(make_settings, capsys: pytest.CaptureFixture[str]) -> None:

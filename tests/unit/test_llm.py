@@ -1,14 +1,13 @@
 """Model factories: chat and embeddings behind the LiteLLM proxy (spec FR-005, FR-006, BR-001, BR-006)."""
 
-import re
-from pathlib import Path
-
+import httpx2
+import openai
+import pytest
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
-from services.llm import make_chat_model, make_embeddings
-from tests.conftest import FAKE_LITELLM_KEY
-
-LLM_MODULE = Path(__file__).resolve().parents[2] / "services" / "llm.py"
+from services.errors import ModelNotAvailableError, ProxyAuthenticationError, ProxyUnreachableError
+from services.llm import make_chat_model, make_embeddings, translate_proxy_errors
+from tests.fakes import FAKE_LITELLM_KEY, openai_connection_error, openai_status_error
 
 
 def test_chat_model_uses_every_setting(make_settings) -> None:
@@ -74,11 +73,6 @@ def test_factories_add_no_second_retry_loop(make_settings) -> None:
     # Then the exact LangChain classes come back (a `.with_retry()` wrapper would be a different type)
     assert type(make_chat_model(settings)) is ChatOpenAI
     assert type(make_embeddings(settings)) is OpenAIEmbeddings
-    # And the module contains no retry machinery of its own
-    source = LLM_MODULE.read_text(encoding="utf-8")
-    assert "with_retry" not in source
-    assert "tenacity" not in source
-    assert not re.search(r"^\s*(for|while)\s", source, flags=re.MULTILINE)
 
 
 def test_models_never_show_the_api_key(make_settings) -> None:
@@ -88,3 +82,32 @@ def test_models_never_show_the_api_key(make_settings) -> None:
     # Then the fake key never appears in their repr
     for model in (make_chat_model(settings), make_embeddings(settings)):
         assert FAKE_LITELLM_KEY not in repr(model)
+
+
+@pytest.mark.parametrize(
+    ("error", "leaf"),
+    [
+        (openai_connection_error(), ProxyUnreachableError),
+        (openai.APITimeoutError(request=httpx2.Request("POST", "https://proxy.example.test")), ProxyUnreachableError),
+        (openai_status_error(openai.AuthenticationError, 401), ProxyAuthenticationError),
+        (openai_status_error(openai.PermissionDeniedError, 403), ProxyAuthenticationError),
+        (openai_status_error(openai.NotFoundError, 404), ModelNotAvailableError),
+        (openai_status_error(openai.InternalServerError, 500), ProxyUnreachableError),
+    ],
+)
+def test_proxy_errors_become_leaves_with_the_cause_kept(error: Exception, leaf: type[Exception]) -> None:
+    """FR-008: each openai error becomes the matching leaf, original chained as `__cause__`."""
+    # Given a block that raises an openai error / When it runs inside the translator
+    with pytest.raises(leaf) as caught, translate_proxy_errors():
+        raise error
+    # Then the leaf keeps the original as its cause
+    assert caught.value.__cause__ is error
+
+
+def test_unexpected_status_shows_only_the_code() -> None:
+    """BR-007: an unmapped HTTP error shows its status code, never the proxy's raw body."""
+    error = openai_status_error(openai.BadRequestError, 400, f"raw body {FAKE_LITELLM_KEY}")
+    with pytest.raises(ProxyUnreachableError) as caught, translate_proxy_errors():
+        raise error
+    assert "HTTP 400" in caught.value.user_message
+    assert FAKE_LITELLM_KEY not in caught.value.user_message

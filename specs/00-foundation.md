@@ -1,10 +1,13 @@
 # Spec 00 — Foundation
 
-- **Version:** 0.5
-- **Last updated:** 2026-10-07
-- **Status:** Ready for planning (review rounds 1–2 applied)
+- **Version:** 0.6
+- **Last updated:** 2026-10-09
+- **Status:** In implementation (review rounds 1–2 and the 2026-10-09 simplicity audit applied)
 - **Owner:** Federico Viera
-- **Decisions:** root `DECISIONS.md` D-001 … D-032 (project-wide). Spec-local decisions made during
+- **Changelog:** v0.6 — error bases are ordinary classes (FR-007a removed), missing index is a status
+  not an error, logging coverage scoped to Octi's handler, retries "3 by default", independent
+  service checks (FR-017, VC-022a), one live smoke test that runs the service check (FR-035), A-006.
+- **Decisions:** root `DECISIONS.md` D-001 … D-033 (project-wide). Spec-local decisions made during
   planning/implementation go to `specs/00-foundation-plan-artifacts/DECISIONS.md` as `S00-D-NNN` (D-004).
 - **Glossary:** `CONTEXT.md`
 
@@ -79,19 +82,21 @@ base before the deadline) and the graders (a setup they can reproduce and verify
   and retry settings, and plain-string inputs (no client-side tokenization).
 
 ### Errors and logging
-- **FR-007 (Must)** — The codebase declares the error hierarchy of D-027 (tree in §7). Every error
-  Octi raises on purpose is a **leaf** class carrying a user-safe message (`user_message`); every
-  `ExternalServiceError` descendant exposes which service failed (`service`).
-- **FR-007a (Must)** — Given any base (non-leaf) class of the hierarchy, When code tries to
-  instantiate it, Then a `TypeError` is raised; only leaf classes can be raised.
+- **FR-007 (Must)** — The codebase declares the error hierarchy of D-027 (tree in §7). Group classes
+  exist so callers can catch a family; Octi code raises the specific **leaf** classes, each carrying
+  a user-safe message (`user_message`); every `ExternalServiceError` descendant exposes which service
+  failed (`service`). Groups are ordinary classes: nothing enforces "leaves only" at runtime.
 - **FR-008 (Must)** — Given a failure inside an external client call made by spec-00 code (the index
   check, the setup script, the service check), Then it is re-raised as the matching leaf error
   (connection error or timeout → `*UnreachableError`; rejected credentials → `*AuthenticationError`;
-  missing model → `ModelNotAvailableError`; wrong vector length → `EmbeddingDimensionError`; missing
-  index → `IndexNotFoundError`; wrong dimension/metric → `IndexMismatchError`) with the original
-  exception chained as its cause. (Agent calls adopt the same rule in specs 01/02.)
-- **FR-009 (Must)** — Given logging is configured, When any log record is emitted whose text contains
-  the value of a secret field, Then the emitted line shows `***` in its place.
+  missing model → `ModelNotAvailableError`; wrong vector length → `EmbeddingDimensionError`; wrong
+  dimension/metric → `IndexMismatchError`) with the original exception chained as its cause. A
+  missing index is not an error: it is the `missing` status of FR-014. (Agent calls adopt the same
+  rule in specs 01/02.)
+- **FR-009 (Must)** — Given logging is configured, When a log record is emitted through Octi's own
+  handler and its text contains the value of a secret field, Then the emitted line shows `***` in its
+  place. Handlers installed by other libraries are not covered; the first defense remains never
+  logging secrets (`SecretStr`, BR-003).
 - **FR-010 (Should)** — Given `LOG_LEVEL` is set to a valid level name, When logging is configured,
   Then that level is used; otherwise `INFO`.
 
@@ -120,7 +125,8 @@ base before the deadline) and the graders (a setup they can reproduce and verify
   reports a `FAIL` line telling the user to untrack it; given it is not tracked, the line reads `OK`; given the folder is not a git repository, the
   line reads `skipped (not a git repository)`.
 - **FR-017 (Must)** — Given any check fails, Then the remaining checks still run and the script exits
-  non-zero; given all pass, it exits zero.
+  non-zero; given all pass, it exits zero. Each check builds the client it needs inside its own
+  guarded step, so a client that cannot even be built fails only the check that uses it.
 - **FR-018 (Must)** — Given configuration is invalid, Then the configuration line shows the
   `InvalidSettingsError` field names and the dependent checks are reported as skipped.
 
@@ -197,8 +203,9 @@ base before the deadline) and the graders (a setup they can reproduce and verify
 ### Tests and docs
 - **FR-034 (Must)** — Given the default test command, Then all tests run with no network access and
   without loading the repository's `.env` (BR-009), using stubbed LLM, embeddings and Pinecone.
-- **FR-035 (Must)** — Given the `live` marker is explicitly selected, Then smoke tests run against the
-  real services using the developer's `.env`.
+- **FR-035 (Must)** — Given the `live` marker is explicitly selected, Then one smoke test runs the
+  service check (FR-015) against the real services using the developer's `.env` and expects no
+  `FAIL` line. The script and the live test share one implementation, so they cannot disagree.
 - **FR-036 (Must)** — The README contains the setup section of D-023, including the service check,
   the security notes of D-017, and a note that client retries are the OpenAI client's built-in ones
   (difference from the course labs, D-026).
@@ -221,8 +228,8 @@ base before the deadline) and the graders (a setup they can reproduce and verify
 - **BR-005** — Index records live in namespace `PINECONE_NAMESPACE` (default `octi`).
   *Rationale:* D-014. *Exceptions:* none.
 - **BR-006** — Client-level retries follow the OpenAI client's built-in policy (connection errors,
-  timeouts, HTTP 408, 409, 429 and ≥ 500), with exponential backoff and jitter, at most 3 attempts in
-  total (`LLM_MAX_RETRIES=2`); other errors (e.g. 400, 401, 404) are not retried; Octi adds no retry
+  timeouts, HTTP 408, 409, 429 and ≥ 500), with exponential backoff and jitter, 3 attempts in total
+  by default (`LLM_MAX_RETRIES=2`; attempts = `LLM_MAX_RETRIES` + 1); other errors (e.g. 400, 401, 404) are not retried; Octi adds no retry
   loop of its own. *Rationale:* D-021, D-026, assignment §11 (no unbounded retry loops).
   This differs from the course labs' app-owned ladder (`max_retries=0`); with a single retry layer
   there is no double counting. *Exceptions:* none.
@@ -245,7 +252,8 @@ base before the deadline) and the graders (a setup they can reproduce and verify
 
 - **NFR-001 (Performance)** — The offline test suite completes in under 30 s on the student's machine.
 - **NFR-002 (Performance)** — The service-check script completes in under 60 s when all services are
-  reachable.
+  healthy (measured once by the student; a slow or failing service can take longer, bounded by the
+  per-call timeouts and retries).
 - **NFR-003 (Performance)** — With services reachable, the app's first screen renders in under 5 s
   after the browser connects.
 - **NFR-004 (Reproducibility)** — Every dependency in `requirements.txt` is pinned with `==`; a fresh
@@ -288,25 +296,24 @@ base before the deadline) and the graders (a setup they can reproduce and verify
 - Error classes of D-027, importable from one module:
 
 ```
-AppError 🔒                                  # .user_message
-├── ConfigurationError 🔒
+AppError                                     # .user_message
+├── ConfigurationError
 │   └── InvalidSettingsError 🍃              # .fields (names only)
-└── ExternalServiceError 🔒                  # .service: "LiteLLM" | "Pinecone" | "LangSmith"
-    ├── LLMProxyError 🔒
+└── ExternalServiceError                     # .service: "LiteLLM" | "Pinecone" | "LangSmith"
+    ├── LLMProxyError
     │   ├── ProxyUnreachableError 🍃
     │   ├── ProxyAuthenticationError 🍃
     │   ├── ModelNotAvailableError 🍃
     │   └── EmbeddingDimensionError 🍃
-    ├── VectorStoreError 🔒
+    ├── VectorStoreError
     │   ├── VectorStoreUnreachableError 🍃
     │   ├── VectorStoreAuthenticationError 🍃
-    │   ├── IndexNotFoundError 🍃
     │   └── IndexMismatchError 🍃            # .expected / .actual (dimension, metric)
-    └── TracingError 🔒
+    └── TracingError
         ├── TracingUnreachableError 🍃
         └── TracingAuthenticationError 🍃
 ```
-🔒 = abstract base, cannot be instantiated (FR-007a); 🍃 = leaf, raisable.
+🍃 = leaf, what Octi code raises; the others are groups for `except`.
 - `configure_logging(settings)`.
 
 ### Files
@@ -354,7 +361,6 @@ Model factories
 Errors and logging
 - VC-011 (FR-007): every class in the §7 tree exists with the parent shown; every leaf has a
   non-empty `user_message`; every `ExternalServiceError` leaf reports its `service`.
-- VC-011a (FR-007a): instantiating each 🔒 class → `TypeError`; instantiating each 🍃 class succeeds.
 - VC-012 (FR-008): in the setup script, a stubbed Pinecone client raising a connection error →
   `VectorStoreUnreachableError` with the original exception as `__cause__`; raising an authentication
   error → `VectorStoreAuthenticationError`; existing index with dimension 3072 → `IndexMismatchError`
@@ -390,6 +396,8 @@ Service check (stubbed services)
 - VC-021a (FR-016): folder is not a git repository → `skipped (not a git repository)`; exit code
   unaffected by this line.
 - VC-022 (FR-017): chat stub raises → chat `FAIL`, the other checks still reported; exit non-zero.
+- VC-022a (FR-017): building the LangSmith client raises → only the `langsmith` line fails; the chat,
+  embeddings and Pinecone stubs still record their calls and report `OK`.
 - VC-023 (FR-018): invalid configuration → configuration `FAIL` naming fields; service checks
   reported as skipped; exit non-zero.
 - VC-024 (BR-003, BR-007): any stub raising an exception whose text contains `sk-FAKE-123` → script
@@ -445,8 +453,8 @@ Tests and docs
 - VC-040a (BR-009): during the default test run, any attempt to load the repository-root `.env` fails
   the run (guard active for every test), while loading a temporary fixture env file succeeds; the
   `Settings` objects used contain only fake values.
-- VC-041 (FR-035): `pytest -m live` with a valid `.env` → live smoke tests run and pass against the
-  real services (manual, by the student).
+- VC-041 (FR-035): `pytest -m live` with a valid `.env` → the live service-check test reports no
+  `FAIL` line (manual, by the student).
 - VC-042 (FR-036, NFR-004): README contains, in order: purpose, prerequisites, venv + install,
   `.env` setup with security notes, index setup, service check, tests, run the app, where each §7
   page lives; every line of `requirements.txt` uses `==`.
@@ -469,3 +477,7 @@ None.
   pydantic 2.13.5, python-dotenv 1.2.4, streamlit 1.65.0, plus pytest. LangGraph, pandas and PyMuPDF
   are added by spec 01/02 when first used.
 - **A-005** — The proxy accepts plain-string embedding inputs (verified in playground lessons 05–06).
+- **A-006** — `Settings` defaults are not written back to the environment, while LangChain/LangSmith
+  read tracing variables (`LANGSMITH_TRACING`, `LANGSMITH_PROJECT`, …) from the environment
+  themselves. Spec 00 relies on `.env.example` setting them explicitly; specs 01/02 must make sure
+  an omitted variable still yields a traced run (e.g. explicit tracing setup at the graph boundary).

@@ -13,7 +13,7 @@ from services.vector_store import (
     ensure_index,
     make_pinecone_client,
 )
-from tests.conftest import FAKE_PINECONE_KEY, StubPineconeClient
+from tests.fakes import FAKE_PINECONE_KEY, StubPineconeClient
 
 # --- check_index (what the app runs: read-only) -------------------------------------------------
 

@@ -7,7 +7,7 @@ import pytest
 from services import settings as settings_module
 from services.errors import InvalidSettingsError
 from services.settings import Settings, get_settings, load_environment
-from tests.conftest import FAKE_LITELLM_KEY, FAKE_PINECONE_KEY, env_without
+from tests.fakes import FAKE_LITELLM_KEY, FAKE_PINECONE_KEY
 
 
 def test_valid_environment_parses_to_typed_values(make_settings) -> None:
@@ -58,7 +58,7 @@ def test_shell_variables_win_over_env_file(monkeypatch: pytest.MonkeyPatch, tmp_
 def test_missing_variables_are_all_named_without_values(fake_env: dict[str, str]) -> None:
     """VC-003: every missing variable is named; no value leaks into the message."""
     # Given LITELLM_API_KEY and LLM_MODEL are missing
-    env = env_without(fake_env, "LITELLM_API_KEY", "LLM_MODEL")
+    env = {key: value for key, value in fake_env.items() if key not in ("LITELLM_API_KEY", "LLM_MODEL")}
     # When parsing / Then InvalidSettingsError names both, and shows no value
     with pytest.raises(InvalidSettingsError) as caught:
         Settings.from_mapping(env)

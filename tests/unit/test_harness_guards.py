@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from services.settings import load_environment
-from tests.conftest import REAL_ENV_FILE
+from services.settings import ENV_FILE, load_environment
+
 
 
 def test_outbound_connection_fails_during_offline_tests() -> None:
@@ -18,7 +18,7 @@ def test_outbound_connection_fails_during_offline_tests() -> None:
 def test_loading_the_real_env_file_fails() -> None:
     """VC-040a: the repository-root .env can never be loaded by a test."""
     with pytest.raises(RuntimeError, match="real .env"):
-        load_environment(REAL_ENV_FILE)
+        load_environment(ENV_FILE)
 
 
 def test_loading_the_default_env_file_fails() -> None:

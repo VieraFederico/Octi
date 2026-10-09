@@ -1,27 +1,25 @@
-"""Shared test harness.
+"""pytest wiring for every test: two automatic guards and two fixtures.
 
-Two autouse guards make the default (offline) test run safe by construction:
+Fake objects (stubs, fake keys) live in `tests/fakes.py` and are imported normally; this file only
+holds what pytest itself loads and injects.
+
+The two autouse guards make the default (offline) test run safe by construction:
 - no test can open a network connection (spec NFR-006);
 - no test can load the repository's real `.env` (spec BR-009).
 Tests marked `live` skip both guards: they are the only ones allowed to use real services.
 """
 
 import socket
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
-from pinecone import NotFoundError
 
 from services import settings as settings_module
-from services.settings import Settings
+from services.settings import ENV_FILE, Settings
+from tests.fakes import FAKE_LANGSMITH_KEY, FAKE_LITELLM_KEY, FAKE_PINECONE_KEY
 
-REAL_ENV_FILE = (Path(__file__).resolve().parent.parent / ".env").resolve()
-
-FAKE_LITELLM_KEY = "sk-FAKE-LITELLM-12345"
-FAKE_PINECONE_KEY = "pc-FAKE-PINECONE-12345"
-FAKE_LANGSMITH_KEY = "ls-FAKE-LANGSMITH-12345"
+REAL_ENV_FILE = ENV_FILE.resolve()
 
 
 def _is_live(request: pytest.FixtureRequest) -> bool:
@@ -53,6 +51,7 @@ def block_repo_env_file(monkeypatch: pytest.MonkeyPatch, request: pytest.Fixture
             raise RuntimeError("A test tried to load the repository's real .env")
         return real_load_dotenv(dotenv_path, *args, **kwargs)
 
+    # Patch the name where it is used: settings.py did `from dotenv import load_dotenv`.
     monkeypatch.setattr(settings_module, "load_dotenv", guarded_load_dotenv)
     settings_module.get_settings.cache_clear()
 
@@ -88,47 +87,3 @@ def make_settings(fake_env: dict[str, str]) -> Callable[..., Settings]:
         return Settings.from_mapping(env)
 
     return build
-
-
-def env_without(env: Mapping[str, str], *keys: str) -> dict[str, str]:
-    """Copy of `env` with `keys` removed."""
-    return {key: value for key, value in env.items() if key not in keys}
-
-
-class StubPineconeClient:
-    """Stands in for `pinecone.Pinecone` and records every call made to it.
-
-    `index` is the existing index as `(dimension, metric)`, or `None` when it does not exist.
-    `error` is raised by every call, to simulate a connection or authentication failure.
-    """
-
-    def __init__(self, index: tuple[int, object] | None = None, error: Exception | None = None) -> None:
-        self.index = index
-        self.error = error
-        self.calls: list[str] = []
-        self.create_kwargs: dict[str, object] = {}
-
-    def describe_index(self, name: str) -> SimpleNamespace:
-        self.calls.append("describe_index")
-        if self.error is not None:
-            raise self.error
-        if self.index is None:
-            raise NotFoundError()
-        dimension, metric = self.index
-        return SimpleNamespace(name=name, dimension=dimension, metric=metric)
-
-    def create_index(self, *, name: str, dimension: int, metric: str, spec: object, timeout: int) -> None:
-        self.calls.append("create_index")
-        self.create_kwargs = {"name": name, "dimension": dimension, "metric": metric, "spec": spec, "timeout": timeout}
-        self.index = (dimension, metric)
-
-    def delete_index(self, *_args: object, **_kwargs: object) -> None:
-        self.calls.append("delete_index")
-
-    def configure_index(self, *_args: object, **_kwargs: object) -> None:
-        self.calls.append("configure_index")
-
-    @property
-    def write_calls(self) -> list[str]:
-        """Every call that would create, delete or change an index."""
-        return [call for call in self.calls if call != "describe_index"]

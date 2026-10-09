@@ -1,9 +1,9 @@
 """Octi's error tree (decision D-027).
 
-Abstract bases only *group* errors so callers can write `except VectorStoreError`; they can never be
-instantiated. Code always raises a *leaf* that names exactly what happened and carries a
-`user_message` that is safe to show in the UI. The original library exception is chained with
-`raise Leaf(...) from exc`, so logs keep the details while the UI never shows them.
+Group classes let callers write `except VectorStoreError`; code raises a *leaf* that names exactly
+what happened and carries a `user_message` that is safe to show in the UI. The original library
+exception is chained with `raise Leaf(...) from exc`, so logs keep the details while the UI never
+shows them.
 
     AppError
     ├── ConfigurationError
@@ -17,7 +17,6 @@ instantiated. Code always raises a *leaf* that names exactly what happened and c
         ├── VectorStoreError            (Pinecone)
         │   ├── VectorStoreUnreachableError
         │   ├── VectorStoreAuthenticationError
-        │   ├── IndexNotFoundError
         │   └── IndexMismatchError
         └── TracingError                (LangSmith)
             ├── TracingUnreachableError
@@ -27,19 +26,11 @@ Rule (BR-011): add a new leaf only when code or UI must react differently, or th
 """
 
 from collections.abc import Mapping
-from typing import Any, ClassVar
+from typing import ClassVar
 
 
 class AppError(Exception):
-    """Root of every error Octi raises on purpose. Abstract."""
-
-    _abstract: ClassVar[bool] = True
-
-    def __new__(cls, *args: Any, **kwargs: Any) -> "AppError":
-        # `cls.__dict__` (not getattr) so a leaf does not inherit its parent's abstract flag.
-        if cls.__dict__.get("_abstract", False):
-            raise TypeError(f"{cls.__name__} is an abstract base error; raise one of its leaf classes")
-        return super().__new__(cls)
+    """Root of every error Octi raises on purpose."""
 
     def __init__(self, user_message: str) -> None:
         super().__init__(user_message)
@@ -50,9 +41,7 @@ class AppError(Exception):
 
 
 class ConfigurationError(AppError):
-    """Octi's own configuration is wrong. Abstract."""
-
-    _abstract = True
+    """Octi's own configuration is wrong."""
 
 
 class InvalidSettingsError(ConfigurationError):
@@ -76,21 +65,19 @@ class InvalidSettingsError(ConfigurationError):
 
 
 class ExternalServiceError(AppError):
-    """A service Octi depends on failed. Abstract. Subclasses set `service`."""
+    """A service Octi depends on failed. `service` names it."""
 
-    _abstract = True
     service: ClassVar[str] = ""
 
 
 class LLMProxyError(ExternalServiceError):
-    """The university LiteLLM proxy (chat or embeddings) failed. Abstract."""
+    """The university LiteLLM proxy (chat or embeddings) failed."""
 
-    _abstract = True
     service = "LiteLLM"
 
 
 class ProxyUnreachableError(LLMProxyError):
-    """Connection error or timeout, after the client's own retries."""
+    """Connection error, timeout or server error, after the client's own retries."""
 
 
 class ProxyAuthenticationError(LLMProxyError):
@@ -106,22 +93,17 @@ class EmbeddingDimensionError(LLMProxyError):
 
 
 class VectorStoreError(ExternalServiceError):
-    """Pinecone failed. Abstract."""
+    """Pinecone failed."""
 
-    _abstract = True
     service = "Pinecone"
 
 
 class VectorStoreUnreachableError(VectorStoreError):
-    """Pinecone could not be reached."""
+    """Pinecone could not be reached, or did not answer in time."""
 
 
 class VectorStoreAuthenticationError(VectorStoreError):
     """Pinecone rejected the API key."""
-
-
-class IndexNotFoundError(VectorStoreError):
-    """The configured index does not exist."""
 
 
 class IndexMismatchError(VectorStoreError):
@@ -137,9 +119,8 @@ class IndexMismatchError(VectorStoreError):
 
 
 class TracingError(ExternalServiceError):
-    """LangSmith failed. Abstract."""
+    """LangSmith failed."""
 
-    _abstract = True
     service = "LangSmith"
 
 
