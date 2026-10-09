@@ -27,7 +27,7 @@ from services.health import (
     run_checks,
 )
 from services.settings import Settings
-from tests.fakes import (
+from tests.stubs import (
     FAKE_LITELLM_KEY,
     GIT_NOT_A_REPOSITORY,
     GIT_NOT_TRACKED,

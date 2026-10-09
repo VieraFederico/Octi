@@ -6,7 +6,7 @@ import pytest
 from scripts.check_services import main
 from services.errors import InvalidSettingsError
 from services.settings import Settings
-from tests.fakes import (
+from tests.stubs import (
     FAKE_LITELLM_KEY,
     FAKE_PINECONE_KEY,
     GIT_NOT_A_REPOSITORY,

@@ -1,6 +1,6 @@
 """pytest wiring for every test: two automatic guards and two fixtures.
 
-Fake objects (stubs, fake keys) live in `tests/fakes.py` and are imported normally; this file only
+Fake objects (stubs, fake keys) live in `tests/stubs.py` and are imported normally; this file only
 holds what pytest itself loads and injects.
 
 The two autouse guards make the default (offline) test run safe by construction:
@@ -17,7 +17,7 @@ import pytest
 
 from services import settings as settings_module
 from services.settings import ENV_FILE, Settings
-from tests.fakes import FAKE_LANGSMITH_KEY, FAKE_LITELLM_KEY, FAKE_PINECONE_KEY
+from tests.stubs import FAKE_LANGSMITH_KEY, FAKE_LITELLM_KEY, FAKE_PINECONE_KEY
 
 REAL_ENV_FILE = ENV_FILE.resolve()
 

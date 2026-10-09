@@ -198,7 +198,9 @@ base before the deadline) and the graders (a setup they can reproduce and verify
   literally (escaped), never interpreted as HTML.
 - **FR-032 (Must)** — Given `assets/logo/` is missing or has no frames, Then a plain "Octi" title is
   shown instead and no error is raised.
-- **FR-033 (Must)** — The repo ships 2–3 placeholder main frames and 1–2 placeholder error frames.
+- **FR-033 (Must)** — The repo ships the student's Octi art (D-035): 8 main frames (mouth closed in
+  the first 7, open in the 8th, so at 8 fps Octi opens his mouth for 1/8 s once per second) and 2
+  error frames (closed, open: Octi "talks" next to the speech bubble).
 
 ### Tests and docs
 - **FR-034 (Must)** — Given the default test command, Then all tests run with no network access and
@@ -444,8 +446,8 @@ Logo
 - VC-037 (FR-031): frame containing `<script>&"` → rendered HTML contains the escaped entities and no
   `<script>` element.
 - VC-038 (FR-032): empty or missing folder → plain "Octi" title; no exception.
-- VC-039 (FR-033): repo contains 2–3 `assets/logo/frame_*.txt` and 1–2 `assets/logo/error/frame_*.txt`
-  files.
+- VC-039 (FR-033): repo contains 8 `assets/logo/frame_*.txt` (first 7 identical, the 8th different)
+  and 2 `assets/logo/error/frame_*.txt` (the closed and the open frame).
 
 Tests and docs
 - VC-040 (FR-034, NFR-001, NFR-006): default `pytest` with network disabled → all pass, zero network

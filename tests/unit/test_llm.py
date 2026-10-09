@@ -7,7 +7,7 @@ from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
 from services.errors import ModelNotAvailableError, ProxyAuthenticationError, ProxyUnreachableError
 from services.llm import make_chat_model, make_embeddings, translate_proxy_errors
-from tests.fakes import FAKE_LITELLM_KEY, openai_connection_error, openai_status_error
+from tests.stubs import FAKE_LITELLM_KEY, openai_connection_error, openai_status_error
 
 
 def test_chat_model_uses_every_setting(make_settings) -> None:

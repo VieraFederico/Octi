@@ -7,7 +7,7 @@ import pytest
 from services import settings as settings_module
 from services.errors import InvalidSettingsError
 from services.settings import Settings, get_settings, load_environment
-from tests.fakes import FAKE_LITELLM_KEY, FAKE_PINECONE_KEY
+from tests.stubs import FAKE_LITELLM_KEY, FAKE_PINECONE_KEY
 
 
 def test_valid_environment_parses_to_typed_values(make_settings) -> None:

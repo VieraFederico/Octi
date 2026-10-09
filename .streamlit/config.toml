@@ -1,0 +1,9 @@
+# Catppuccin Mocha (spec FR-019a, decision D-029): https://catppuccin.com/palette
+[theme]
+base = "dark"
+backgroundColor = "#1e1e2e"           # base
+secondaryBackgroundColor = "#181825"  # mantle
+textColor = "#cdd6f4"                 # text
+primaryColor = "#cba6f7"              # mauve: buttons, focus, links
+redColor = "#f38ba8"                  # errors
+yellowColor = "#f9e2af"               # warnings

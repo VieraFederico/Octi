@@ -6,7 +6,7 @@ import logging
 import pytest
 
 from services.logging_setup import configure_logging
-from tests.fakes import FAKE_LITELLM_KEY, FAKE_PINECONE_KEY
+from tests.stubs import FAKE_LITELLM_KEY, FAKE_PINECONE_KEY
 
 
 @pytest.fixture(autouse=True)

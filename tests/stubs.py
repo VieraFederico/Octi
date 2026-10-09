@@ -1,4 +1,4 @@
-"""Fake keys and stand-in objects for the offline tests. A plain module: tests import from it.
+"""Fake keys and stand-in objects (stubs) for the offline tests. A plain module: tests import from it.
 
 Each stub imitates only the part of a real client that Octi uses, and records what was asked of
 it, so tests can check both the answer and the calls (for example "nothing was created").
@@ -16,6 +16,7 @@ from pinecone import NotFoundError
 
 from services.health import Clients
 from services.settings import Settings
+from services.vector_store import IndexStatus
 
 # Unique, searchable fake secrets (>= 8 characters, like real keys): tests assert they never leak.
 FAKE_LITELLM_KEY = "sk-FAKE-LITELLM-12345"
@@ -26,6 +27,11 @@ MODEL_IDS = ["fake-chat-model", "fake-embedding-model", "another-model"]
 
 
 # --- Pinecone ----------------------------------------------------------------------------------
+
+OK_INDEX = IndexStatus("ok", 1536, "cosine", 1536, "cosine")
+MISSING_INDEX = IndexStatus(
+    "missing", 1536, "cosine", reason="The Pinecone index 'octi-tables' does not exist. Create it with: python -m scripts.setup_index"
+)
 
 
 class StubPineconeClient:

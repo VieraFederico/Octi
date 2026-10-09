@@ -95,3 +95,21 @@
 **Decision**: Each external service has one module holding its client factory and its error translation: `services/llm.py` (LiteLLM, incl. `list_proxy_models`), `services/vector_store.py` (Pinecone), new `services/tracing.py` (LangSmith; not named `langsmith.py`, which would shadow the library). `services/health.py` only orchestrates. `run_git_in_repo` stays in `health.py` (its only user).
 **Rejected**: Leaving factories in `health.py`; a folder per service (too small to split today).
 **Consequences**: Agents import factories and translators from the service modules, never from `health.py`.
+
+## S00-D-017: App test seam  (Iteration 4)
+**Context**: AppTest runs `app.py` in the test process; the app must start with fake settings and a fake index status.
+**Decision**: `tests/functional/conftest.py` → `start_app(settings=…, index_status=…, settings_error=…)` patches `ui.startup.get_settings` and `ui.startup.check_index` (where they are used), clears `st.cache_resource`, and makes the LiteLLM factories raise if called (D-025). It also skips Streamlit's component-manifest scan, which costs ~3 s per AppTest on `/mnt/c` and finds nothing (Octi has no custom components): suite 58 s → 18 s.
+**Rejected**: An environment flag read by the app (test logic in production code).
+**Consequences**: `load_startup()` must keep calling `get_settings` / `check_index` through the `ui.startup` module names.
+
+## S00-D-018: AppTest cannot upload files into `st.chat_input`  (Iteration 4)
+**Context**: The plan flagged this risk; Streamlit 1.65's AppTest `ChatInput.set_value` accepts text only.
+**Decision**: The PDF handling is two pure functions in `ui/chat.py` (`submission_parts`, `reply_to`) tested in `tests/unit/test_chat.py` (VC-028, VC-028a, with an upload object whose content raises if read). VC-029 reads the composer's `file_type` from the AppTest element.
+**Rejected**: Driving the browser (Playwright) — a new dependency for one check.
+**Consequences**: The student confirms a real PDF attachment by hand (VC-043 checklist).
+
+## S00-D-019: Two UI modules beyond the plan's file map  (Iteration 4)
+**Context**: The plan listed `ui/{logo,sidebar,chat,…}.py`.
+**Decision**: Added `ui/startup.py` (the cached start-up check, `Startup` result, test seam) and `ui/library.py` (Library view; grows in spec 01). `app.py` stays a thin script.
+**Rejected**: Start-up logic inside `app.py` (untestable seam); Library inside `chat.py` (unrelated view).
+**Consequences**: The error screen (Iteration 5) reads `Startup` to decide what to show.
