@@ -19,6 +19,68 @@ Changed: `tests/fakes.py` → renamed `tests/stubs.py` (student's request; impor
 `MISSING_INDEX`; `specs/00-foundation.md` (FR-033, VC-039); root `DECISIONS.md` (D-035);
 `CONTEXT.md`; `DECISIONS.md` (S00-D-017 … 019).
 
+## Revision after the student's review (D-036)
+The student ran the app and rejected the look: the ASCII Octi lost its monospace font and wrapped
+(`st.markdown` rewrites HTML; now `st.html`), the toggle belonged in the sidebar, and emojis looked
+cheap; status and models must open on demand, not stay on screen. Redesign: sidebar nav, footer
+buttons opening Status / Models modals, centered big Octi, chat bubbles, Inter font, SVG icons only,
+one global stylesheet with CSS variables and explicit classes. Added `assets/styles.css`,
+`ui/style.py` (loads it), `ui/icons.py`, `assets/octi.svg`, `tests/unit/test_no_emojis.py`; changed
+`app.py`, `ui/{chat,logo,sidebar}.py`, `.streamlit/config.toml`, `tests/functional/test_app.py`, spec
+FR-019 / FR-026 / FR-029 / VC-025 / VC-031 / VC-034, root `DECISIONS.md` (D-036). Checked visually
+with headless-Chrome screenshots at 1440×900 and 375 px (fake services). `pytest -q`: 132 passed.
+
+Second review (D-037): the logo's "weird head" was JetBrains Mono ligatures (now off); Octi now swims
+(tentacle wave + bob + mouth cross-fade, CSS only); sidebar wordmark "Octi" replaces the SVG mark;
+status pops up from its button (popover); the chat model is picked in the composer from `LLM_MODEL` +
+new `LLM_MODEL_CHOICES`; eased transitions everywhere. Added `tests/unit/{test_sidebar,test_style}.py`,
+settings tests for the choices; changed `services/settings.py`, the env example file, spec FR-019,
+FR-024a (new), FR-030, VC-025/025a/034/036 and the configuration table. `pytest -q`: 140 passed.
+
+Third review (D-038): logo rows were centered one by one by the empty state's `text-align: center`
+(the real cause of the "weird head"; ligatures were a second, smaller one); popover slide removed;
+"Status: Operational"; "Octi" at the top with a "new chat" icon (Cmd/Ctrl+Shift+O); Chat | Library
+pill switch. `pytest -q`: 140 passed.
+
+Fourth review (D-039): white logo, flicker fixed (no identical-frame layers, GPU-moved rows), greeting
+as HTML so it is truly centered (measured: logo, greeting and composer centers all at x = 870 at
+1440 px), rounder radii. `pytest -q`: 141 passed.
+
+Fifth review (D-040): one-screen sidebar ("Octi" home, "New chat", "Library", Documents preview with
+nested tables and native expanders, status pinned to the sidebar frame). Added `ui/documents.py`,
+`tests/unit/test_documents.py`. `pytest -q`: 147 passed.
+
+Flicker (D-041), measured with a headless-Chrome screencast of the logo, one motion at a time:
+the full-frame mouth fade dimmed the whole octopus each second, and sub-pixel motion (bob, eased
+sway) re-blurred the text. Now: mouth-only overlay rows switching instantly, no bob, whole-pixel
+stepped sway. After the fix the head rows (0-15) never change; only the mouth rows and the tentacle
+tips do. `pytest -q`: 149 passed.
+
+Gotchas from the revision:
+- CSS cannot use a variable inside `steps()`; the whole animation is dropped silently. Write the
+  value inline.
+- Text moved by a fraction of a pixel is re-rasterized every frame and shimmers; move it by whole
+  pixels or not at all.
+- The stylesheet guard test caught a second `<details>` written inside a CSS comment: run it before
+  looking at the app.
+- A Markdown heading in Streamlit includes a hidden anchor link that offsets centered text; use HTML.
+- Cross-fading two identical text layers is not invisible: the partial opacities shimmer.
+- Anything inside a centered container inherits `text-align: center`; a `<pre>` then centers every
+  line separately. ASCII art must set `text-align: left`.
+- Streamlit positions popovers with `transform`; never animate `transform` on `stPopoverBody`.
+- Streamlit's selected segmented button is styled by `.<hash>[data-selected]:not([data-disabled])`;
+  to override it without `!important`, match the same attributes after the `st-key` class.
+- Never write a tag-like `<word` inside `assets/styles.css`, not even in a comment: Streamlit's
+  DOMPurify then drops the whole `<style>` block and every style disappears (`test_style.py` guards it).
+- AppTest cannot read a popover's label; the label is a pure function (`status_label`) tested directly.
+- Streamlit 1.65's selectbox is a text input plus a chevron button (not BaseWeb's select markup) and
+  accepts `width` in pixels or "stretch" only.
+- `st.html` strips `<svg>`; icons are `<img>` tags with an SVG `data:` URL (`ui/icons.img_tag`).
+- An `st.html` holding only `<style>` goes to Streamlit's event container, so AppTest cannot see it.
+  The selected nav item is therefore a "secondary" button (testable) that the stylesheet tints.
+- AppTest drives `st.dialog`: clicking the footer button and reading the dialog's `st.html` works.
+- Streamlit does not reload imported `ui/*` modules on a browser refresh; restart the server after edits.
+
 ## Deviations
 - `ui/startup.py` and `ui/library.py` added beyond the plan's file map (S00-D-019).
 - Logo frames are the student's Octi art (D-035) instead of placeholders: 8 main frames, 2 error frames.

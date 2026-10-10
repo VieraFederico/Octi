@@ -5,8 +5,8 @@
 - Error tree (D-027, amended): group classes for `except`, leaves raised with a safe `user_message`.
 - Redacting logging on Octi's own handler; LiteLLM factories; Pinecone index check / creation.
 - Two CLIs: `python -m scripts.setup_index` and `python -m scripts.check_services`.
-- Streamlit shell (`streamlit run app.py`): Catppuccin theme, Chat | Library toggle, sidebar with models
-  and status, animated Octi logo, chat history with placeholder replies, PDF-only composer.
+- Streamlit shell (`streamlit run app.py`): Catppuccin theme, one-screen sidebar ("Octi" home, New chat, Library, Documents preview, status popover); chat-model
+  picker in the composer (`LLM_MODEL` + `LLM_MODEL_CHOICES`); swimming ASCII Octi, animated Octi logo, chat history with placeholder replies, PDF-only composer.
 - Offline pytest harness (network and real `.env` blocked): unit + AppTest functional tests. Minimal README.
 
 ## File map
@@ -21,7 +21,7 @@
 - `app.py` — Streamlit entry: start-up check → error, or the shell (sidebar + Chat / Library).
 - `ui/startup.py` — cached start-up check (`load_startup` → `Startup`); no LiteLLM call (D-025).
 - `ui/logo.py` — frame loading + CSS-animated logo HTML. `ui/chat.py` — Chat view, `reply_to`, `submission_parts`.
-- `ui/sidebar.py` — sidebar. `ui/library.py` — Library view (empty state).
+- `ui/sidebar.py` — sidebar (nav + status footer). `ui/style.py` — loads `assets/styles.css` (global CSS: palette variables, explicit classes). `ui/icons.py` — SVG icons (no emojis, D-036). `ui/documents.py` — sidebar Documents preview (`load_documents()` is the spec-01 seam). `ui/library.py` — Library view (empty state).
 - `.streamlit/config.toml` — Catppuccin Mocha. `assets/logo/` — 8 main frames; `assets/logo/error/` — 2 frames (D-035).
 - `tests/conftest.py` — pytest wiring only: autouse guards + `fake_env`, `make_settings`.
 - `tests/stubs.py` — fake keys, stubs, index statuses, `always` / `failing` / `healthy_clients`.

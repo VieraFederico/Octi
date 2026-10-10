@@ -1,0 +1,259 @@
+/* Octi's global stylesheet (decisions D-036, D-037), loaded once by `ui/style.py`.
+
+   Colors: Catppuccin Mocha (https://catppuccin.com/palette) as CSS variables. The same values are set
+   in `.streamlit/config.toml`, because Streamlit's own widgets read the theme from there.
+
+   Selectors, in order of preference:
+   1. `.octi-*`      — classes on Octi's own HTML (logo, wordmark, status rows).
+   2. `.st-key-*`    — the class Streamlit adds to every widget or container created with `key=`.
+   3. `[data-testid]` — only for Streamlit parts that take no `key` (header, chat messages, the
+      composer's inner box, popover and dialog bodies). A Streamlit upgrade may rename these; the app
+      still works, only the polish is lost.
+
+   Motion: only `transform` and `opacity` are animated (the GPU does those at 60 fps), with eased
+   timing. Users who ask their system for reduced motion get none (end of file). */
+
+:root {
+  /* palette */
+  --octi-base: #1e1e2e;
+  --octi-mantle: #181825;
+  --octi-surface0: #313244;
+  --octi-surface1: #45475a;
+  --octi-overlay0: #6c7086;
+  --octi-subtext0: #a6adc8;
+  --octi-text: #cdd6f4;
+  --octi-mauve: #cba6f7;
+  --octi-mauve-tint: rgba(203, 166, 247, 0.12);
+  --octi-white: #ffffff;   /* the Octi logo */
+  --octi-green: #a6e3a1;
+  --octi-peach: #fab387;
+
+  /* type and shape */
+  --octi-font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --octi-logo-char: 6.5px;      /* 40 rows of 6.5 px ≈ 260 px tall */
+  --octi-radius-sm: 0.75rem;
+  --octi-radius-md: 1.25rem;
+  --octi-radius-lg: 1.75rem;
+  --octi-radius-full: 999px;
+  --octi-column: 760px;         /* width of the reading column */
+
+  /* motion */
+  --octi-ease: cubic-bezier(0.22, 1, 0.36, 1);   /* fast start, soft landing */
+  --octi-fast: 160ms;
+  --octi-enter: 260ms;
+}
+
+/* ---- Page ------------------------------------------------------------------------------------ */
+
+[data-testid="stHeader"] { background: transparent; }
+
+[data-testid="stMainBlockContainer"],
+[data-testid="stBottomBlockContainer"] { max-width: var(--octi-column); }
+
+/* ---- Sidebar --------------------------------------------------------------------------------- */
+
+/* Streamlit's sidebar header (the collapse button) floats over the top right corner, so "Octi"
+   starts at the very top instead of below an empty band. */
+[data-testid="stSidebarHeader"] { position: absolute; top: 0; right: 0; z-index: 3; padding: 1.15rem 0.75rem 0 0; height: auto; }
+[data-testid="stSidebarUserContent"] { padding-top: 1rem; padding-bottom: 5rem; }  /* room for the footer */
+
+/* The wordmark "Octi": a button (it leads back to the chat) drawn as bold text. */
+.st-key-home button { padding: 0 0.4rem; min-height: 0; margin-bottom: 0.9rem; }
+.st-key-home button p {
+  font-weight: 800; font-size: 1.5rem; letter-spacing: -0.02em; line-height: 1.2; color: var(--octi-text);
+}
+
+/* Nav rows: "New chat" and "Library", flat, left-aligned, rounded highlight on hover. */
+.st-key-sidebar-nav { gap: 0.15rem; }
+.st-key-nav-new button,
+.st-key-nav-library button {
+  padding: 0.4rem 0.6rem; border-radius: var(--octi-radius-sm); color: var(--octi-text);
+  transition: background-color var(--octi-fast) var(--octi-ease);
+}
+.st-key-nav-new button > div,
+.st-key-nav-library button > div { justify-content: flex-start; flex: 1; }
+.st-key-nav-new button:hover,
+.st-key-nav-library button:hover { background: var(--octi-surface0); }
+
+/* "New chat": the plus sits in a small filled circle, like a primary action. */
+.st-key-nav-new [data-testid="stIconMaterial"] {
+  background: var(--octi-surface0); border-radius: var(--octi-radius-full); padding: 0.15rem; font-size: 1.05rem;
+}
+/* Its shortcut stays hidden until the row is hovered, then shows faintly at the right end. */
+.st-key-nav-new kbd {
+  margin-left: auto; background: transparent; border: none; font-size: 0.75rem; color: var(--octi-overlay0);
+  opacity: 0; transition: opacity var(--octi-fast) var(--octi-ease);
+}
+.st-key-nav-new button:hover kbd { opacity: 1; }
+.st-key-nav-new button > div > span { width: 100%; display: flex; align-items: center; gap: 0.5rem; }
+
+/* The Library row while the Library view is open: `ui/sidebar.py` draws it as "secondary". */
+.st-key-nav-library [data-testid="stBaseButton-secondary"] { background: var(--octi-mauve-tint); border: none; }
+
+/* ---- Documents (see `ui/documents.py`) ---- */
+
+.octi-docs { padding: 1.25rem 0.6rem 0; color: var(--octi-text); font-size: 0.9rem; }
+.octi-section-title { color: var(--octi-overlay0); font-size: 0.8rem; margin-bottom: 0.4rem; }
+.octi-docs-empty { color: var(--octi-overlay0); font-size: 0.85rem; line-height: 1.4; }
+
+.octi-doc-title {
+  display: flex; align-items: center; gap: 0.55rem; padding: 0.3rem 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.octi-doc-title span { overflow: hidden; text-overflow: ellipsis; }
+.octi-doc-title img { flex: none; }
+
+/* A PDF's tables hang from a thin guide line, indented under its name. */
+.octi-doc-tables { margin: 0 0 0.35rem 0.45rem; padding-left: 1.15rem; border-left: 1px solid var(--octi-surface0); }
+.octi-doc-table {
+  padding: 0.25rem 0; color: var(--octi-subtext0);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* "View all" / "Show more": the native details element. The summary is drawn after the content (column-reverse),
+   so the clickable line stays at the end, and it reads "Show less" while open. */
+.octi-docs details { display: flex; flex-direction: column-reverse; }
+.octi-docs summary {
+  list-style: none; cursor: pointer; padding: 0.25rem 0; color: var(--octi-overlay0);
+  transition: color var(--octi-fast) var(--octi-ease);
+}
+.octi-docs summary::-webkit-details-marker { display: none; }
+.octi-docs summary:hover { color: var(--octi-text); }
+.octi-docs .octi-open-label,
+.octi-docs details[open] > summary .octi-closed-label { display: none; }
+.octi-docs details[open] > summary .octi-open-label { display: inline; }
+.octi-docs details[open] .octi-expanded { animation: octi-fade-in var(--octi-enter) var(--octi-ease); }
+
+/* Footer: pinned to the bottom edge of the sidebar frame (not of the scrolling list), so a long
+   document list scrolls under it; its background hides what passes below. */
+[data-testid="stSidebar"] { position: relative; }
+.st-key-sidebar-footer {
+  position: absolute; bottom: 0; left: 0; right: 0; width: auto; z-index: 2;
+  padding: 0.75rem 1rem 1rem; background: var(--octi-mantle); border-top: 1px solid var(--octi-surface0);
+}
+.st-key-status-popover button {
+  border: none; background: transparent; padding: 0.35rem 0.75rem; border-radius: var(--octi-radius-full);
+  color: var(--octi-subtext0); font-size: 0.875rem;
+  transition: background-color var(--octi-fast) var(--octi-ease), color var(--octi-fast) var(--octi-ease);
+}
+.st-key-status-popover button:hover { background: var(--octi-surface0); color: var(--octi-text); }
+.st-key-status-popover button > div { justify-content: flex-start; flex: 1; }
+.st-key-status-popover button > div > div { justify-content: flex-start; }
+.st-key-status-popover button p { white-space: nowrap; }
+
+/* The status dot: a CSS circle before the label; green when ready, peach when not traced. */
+.st-key-status-popover button p::before {
+  content: ""; display: inline-block; width: 0.5rem; height: 0.5rem; border-radius: 50%;
+  margin-right: 0.5rem; vertical-align: middle; background: var(--octi-green);
+}
+.st-key-status-warn .st-key-status-popover button p::before { background: var(--octi-peach); }
+
+/* Status rows inside the popover. */
+.octi-status-row { display: flex; align-items: center; gap: 0.6rem; padding: 0.3rem 0; color: var(--octi-text); }
+.octi-status-row img { flex: none; }
+.octi-status-note { padding-top: 0.5rem; margin-top: 0.4rem; border-top: 1px solid var(--octi-surface0);
+  color: var(--octi-subtext0); font-size: 0.85rem; }
+
+/* Popovers and dialogs fade in. Opacity only: Streamlit places a popover with `transform`, so
+   animating `transform` here would start it at the page's corner and slide it to its button. */
+[data-testid="stPopoverBody"],
+[data-testid="stDialog"] [role="dialog"] { animation: octi-fade-in var(--octi-enter) var(--octi-ease); }
+[data-testid="stPopoverBody"] { border-radius: var(--octi-radius-md); }
+[data-testid="stDialog"] [role="dialog"] { border-radius: var(--octi-radius-lg); }
+@keyframes octi-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* ---- Chat ------------------------------------------------------------------------------------ */
+
+/* Messages: no avatars; the user's text in a rounded bubble on the right, Octi's as plain text.
+   Each new message fades and slides up into place. */
+[data-testid="stChatMessageAvatarUser"],
+[data-testid="stChatMessageAvatarAssistant"] { display: none; }
+[data-testid="stChatMessage"] {
+  background: transparent; padding: 0.25rem 0;
+  animation: octi-message-in var(--octi-enter) var(--octi-ease) both;
+}
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) {
+  margin-left: auto; max-width: 85%; width: fit-content;
+  background: var(--octi-surface0); border-radius: var(--octi-radius-lg); padding: 0.65rem 1.1rem;
+}
+@keyframes octi-message-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* Composer bar: the composer, with the model picker laid over its right end (left of "send"). */
+.st-key-composer-bar { position: relative; width: 100%; }
+.st-key-composer [data-testid="stChatInput"] {
+  border-radius: var(--octi-radius-lg); border: 1px solid var(--octi-surface0);
+  transition: border-color var(--octi-fast) var(--octi-ease);
+}
+.st-key-composer [data-testid="stChatInput"]:focus-within { border-color: var(--octi-surface1); }
+.st-key-composer [data-testid="stChatInputSubmitButton"] { border-radius: var(--octi-radius-full); }
+.st-key-composer textarea { padding-right: 11rem; }   /* the text never runs under the picker */
+
+/* The picker: a selectbox (a text input plus a chevron button) drawn as quiet text, like "gpt-5-mini ⌄". */
+.st-key-model-picker {
+  position: absolute; right: 3.4rem; bottom: 0.55rem; z-index: 2;
+}
+.st-key-model-picker [data-testid="stSelectbox"] > div:last-child > div {
+  background: transparent; border: none; box-shadow: none; border-radius: var(--octi-radius-full);
+  transition: background-color var(--octi-fast) var(--octi-ease);
+}
+.st-key-model-picker [data-testid="stSelectbox"] > div:last-child > div:hover { background: var(--octi-surface0); }
+.st-key-model-picker input {
+  text-align: right; cursor: pointer; font-size: 0.85rem; color: var(--octi-subtext0);
+  transition: color var(--octi-fast) var(--octi-ease);
+}
+.st-key-model-picker [data-testid="stSelectbox"]:hover input { color: var(--octi-text); }
+
+/* Empty state: logo, greeting, composer and hint stacked in the middle of the page (FR-020). */
+.st-key-empty-state { min-height: 75vh; justify-content: center; align-items: center; text-align: center; }
+.st-key-empty-hint { width: 100%; }
+.st-key-empty-hint [data-testid="stMarkdownContainer"] { text-align: center; }
+/* The greeting is plain HTML: a Markdown heading carries a hidden anchor link that pushes it off-center. */
+.octi-greeting {
+  margin: 0; padding: 0.75rem 0 0.5rem; text-align: center;
+  font-weight: 700; font-size: 2.75rem; letter-spacing: -0.02em; line-height: 1.1; color: var(--octi-text);
+}
+.st-key-empty-hint p { color: var(--octi-overlay0); font-size: 0.875rem; }
+
+/* ---- Logo (see `ui/logo.py` for how the three motions combine) ------------------------------- */
+
+/* The logo. No up-and-down bob: moving the whole drawing re-rendered the thin characters on every
+   step and shimmered like static (measured, D-041). */
+.octi-logo { display: inline-grid; color: var(--octi-white); -webkit-font-smoothing: antialiased; }
+
+/* Frames share one grid cell, so they overlap exactly. Ligatures off: JetBrains Mono would otherwise
+   redraw runs like "===", "+++" and "::" as joined shapes and distort the drawing. */
+.octi-logo-frame {
+  grid-area: 1 / 1;
+  margin: 0; padding: 0; background: transparent; color: inherit;
+  font-family: var(--octi-font-mono); font-size: var(--octi-logo-char); line-height: 1; white-space: pre;
+  font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0;
+  text-align: left;   /* the empty state centers text; centering each line would shove short rows right */
+}
+
+/* Mouth: the changed rows of later frames switch on and off instantly over the first frame (no fade:
+   a fading layer dimmed the whole octopus). The keyframes come from `ui/logo.py`. */
+.octi-logo-overlay { opacity: 0; animation-timing-function: step-end; animation-iteration-count: infinite; }
+
+/* Every row is its own line, painted with the page color so an overlay frame hides the one below. */
+.octi-row { display: block; background: var(--octi-base); }
+.octi-row-blank { background: transparent; }   /* unchanged rows of an overlay frame: see-through */
+
+/* Swim: tentacle rows sway side to side; `--amp`, `--phase` and a `steps()` timing (one step per
+   pixel, so the text never re-blurs) are set per row by `ui/logo.py`. */
+.octi-swim {
+  animation: octi-swim 1.3s linear infinite alternate;
+  animation-delay: var(--phase);
+}
+@keyframes octi-swim {
+  from { transform: translate3d(calc(var(--amp) * -1), 0, 0); }
+  to   { transform: translate3d(var(--amp), 0, 0); }
+}
+
+/* ---- Reduced motion -------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .octi-swim, .octi-logo-overlay,
+  [data-testid="stChatMessage"], [data-testid="stPopoverBody"], [data-testid="stDialog"] [role="dialog"] {
+    animation: none !important;
+  }
+}

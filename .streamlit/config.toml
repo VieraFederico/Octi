@@ -1,4 +1,5 @@
 # Catppuccin Mocha (spec FR-019a, decision D-029): https://catppuccin.com/palette
+# Fonts and the minimal toolbar: decision D-036.
 [theme]
 base = "dark"
 backgroundColor = "#1e1e2e"           # base
@@ -7,3 +8,13 @@ textColor = "#cdd6f4"                 # text
 primaryColor = "#cba6f7"              # mauve: buttons, focus, links
 redColor = "#f38ba8"                  # errors
 yellowColor = "#f9e2af"               # warnings
+orangeColor = "#fab387"               # peach: "not traced" status dot
+greenColor = "#a6e3a1"                # green: "all systems ready" status dot
+borderColor = "#313244"               # surface0
+showSidebarBorder = false
+baseRadius = "1rem"                   # rounder widgets everywhere (D-039)
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap, sans-serif"
+codeFont = "JetBrains Mono:https://fonts.googleapis.com/css2?family=JetBrains+Mono&display=swap, monospace"
+
+[client]
+toolbarMode = "minimal"               # hide "Deploy" and developer options; keep the main menu

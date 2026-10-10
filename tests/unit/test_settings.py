@@ -136,3 +136,14 @@ def test_namespace_defaults_to_octi_and_can_be_overridden(make_settings) -> None
     """VC-007d: PINECONE_NAMESPACE defaults to "octi"."""
     assert make_settings().PINECONE_NAMESPACE == "octi"
     assert make_settings(PINECONE_NAMESPACE="x").PINECONE_NAMESPACE == "x"
+
+
+def test_chat_model_choices_put_the_default_first_without_duplicates(make_settings) -> None:
+    """D-037: LLM_MODEL first, then LLM_MODEL_CHOICES in order; blanks and repeats dropped."""
+    settings = make_settings(LLM_MODEL_CHOICES=" model-b ,, fake-chat-model, model-b,model-c ")
+    assert settings.chat_model_choices == ["fake-chat-model", "model-b", "model-c"]
+
+
+def test_chat_model_choices_default_to_llm_model_alone(make_settings) -> None:
+    """D-037: no LLM_MODEL_CHOICES → only LLM_MODEL is offered."""
+    assert make_settings().chat_model_choices == ["fake-chat-model"]

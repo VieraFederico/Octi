@@ -69,6 +69,7 @@ class Settings(BaseModel):
     LITELLM_BASE_URL: str
     LITELLM_API_KEY: SecretStr
     LLM_MODEL: str = Field(min_length=1)
+    LLM_MODEL_CHOICES: str = ""  # comma-separated extra models for the composer's picker (D-037)
     EMBEDDING_MODEL: str = Field(min_length=1)
     EMBEDDING_DIMENSION: PositiveInt = 1536
     LLM_TEMPERATURE: float = Field(default=0.0, ge=0.0, le=2.0)
@@ -137,6 +138,13 @@ class Settings(BaseModel):
                 reason = "missing" if error["type"] == "missing" else error["msg"].removeprefix("Value error, ")
                 problems.setdefault(name, reason)
             raise InvalidSettingsError(problems) from None
+
+    @property
+    def chat_model_choices(self) -> list[str]:
+        """The chat models the user may pick: `LLM_MODEL` (the default) first, then `LLM_MODEL_CHOICES`,
+        without blanks or duplicates. The embedding model is never a choice: it fixes the index dimension."""
+        names = [self.LLM_MODEL, *(name.strip() for name in self.LLM_MODEL_CHOICES.split(","))]
+        return list(dict.fromkeys(name for name in names if name))
 
     def secret_values(self) -> list[str]:
         """The raw secret strings, for the log redactor only (BR-003 exception)."""

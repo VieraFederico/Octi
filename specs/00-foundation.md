@@ -133,10 +133,13 @@ base before the deadline) and the graders (a setup they can reproduce and verify
 ### Streamlit shell
 - **FR-019 (Must)** — Given valid configuration and index status `ok`, When the app opens, Then it
   shows a single page
-  with a sidebar and a `Chat | Library` toggle defaulting to `Chat`. The sidebar contains: logo
-  placeholder, "New chat" control, the chat and embedding model names as captions (not controls),
-  and the startup status: configuration OK, the FR-014 index status, and the tracing status
-  (FR-029). The startup status makes no LiteLLM call; the full service check stays in the script
+  with a sidebar on one screen (D-040), from the top: the wordmark "Octi" (Inter, extra bold; clicking
+  it returns to the current chat); the rows "New chat" (shortcut Cmd/Ctrl+Shift+O) and "Library" (the
+  Library view; highlighted while open); the Documents preview (FR-026a); and, at the bottom, a status
+  button ("Status: Operational", or "Status: Not traced") whose popover opens from it with the startup
+  status (configuration OK, the FR-014 index status, the tracing status (FR-029)) and the embedding
+  model name (shown, not chosen). The status is
+  not on screen until opened. The UI uses no emojis; icons are SVGs (D-036, D-037). The startup status makes no LiteLLM call; the full service check stays in the script
   (D-025).
 - **FR-020 (Must)** — Given the conversation is empty, When the Chat view renders, Then it shows, in
   this vertical order and all horizontally and vertically centered: the animated ASCII logo, a
@@ -145,8 +148,8 @@ base before the deadline) and the graders (a setup they can reproduce and verify
   Then the logo and greeting are not shown, the message history is shown, and the composer is pinned
   to the bottom of the page (D-028).
 - **FR-019a (Must)** — The UI uses the Catppuccin Mocha palette: background base `#1e1e2e`, secondary
-  background mantle `#181825`, text `#cdd6f4`, accent Mauve `#cba6f7` (buttons, focus, links, logo
-  tint), errors Red `#f38ba8`, warnings Yellow `#f9e2af` (D-029).
+  background mantle `#181825`, text `#cdd6f4`, accent Mauve `#cba6f7` (buttons, focus, links),
+  errors Red `#f38ba8`, warnings Yellow `#f9e2af` (D-029); the ASCII logo is white (D-039).
 - **FR-022 (Must)** — Given the user submits text in the composer, Then the text appears as a user
   message followed by an assistant message stating that answering arrives in spec 02.
 - **FR-023 (Must)** — Given the user attaches a PDF with the composer's "+", Then a user message shows
@@ -157,6 +160,10 @@ base before the deadline) and the graders (a setup they can reproduce and verify
   FR-022).
 - **FR-024 (Must)** — Given the composer, When the user tries to attach a non-PDF file, Then the
   upload is not accepted.
+- **FR-024a (Must)** — The composer shows a chat-model picker at its right end, offering `LLM_MODEL`
+  (first, the default) and then the models in `LLM_MODEL_CHOICES`, without duplicates. The pick is
+  kept for the browser session, survives the move from the empty state to the pinned composer, and
+  is what the Analyst agent (spec 02) will use. The embedding model is not selectable (D-037).
 - **FR-025 (Must)** — Given messages exist and warnings are enabled, When the user clicks "New chat",
   Then a modal says the current conversation will be erased and offers **Erase**, **Cancel** and a
   "Don't warn me again" checkbox (D-030).
@@ -168,7 +175,11 @@ base before the deadline) and the graders (a setup they can reproduce and verify
   with messages, Then the conversation is cleared immediately, without a modal.
 - **FR-025c (Must)** — Given the conversation is empty, When the user clicks "New chat", Then no modal
   appears and nothing changes.
-- **FR-026 (Must)** — Given the Library view is selected, Then it shows an empty-state message saying
+- **FR-026a (Must)** — The sidebar's "Documents" section lists the ingested PDFs (5 shown, the rest
+  behind "Show more"), each with up to 3 of its table titles nested under it (the rest behind
+  "View all"); both expanders open in place without a rerun and read "Show less" while open. Names are
+  HTML-escaped. Before spec 01 there are no documents and it reads "No documents yet" (D-040).
+- **FR-026 (Must)** — Given the Library view is selected (sidebar "Library" row), Then it shows an empty-state message saying
   no tables are indexed yet.
 - **FR-027 (Must)** — Given configuration is invalid, When the app opens, Then the Octi error screen
   (FR-027a) is shown instead of the shell, naming the offending variables (names only) and telling
@@ -187,13 +198,17 @@ base before the deadline) and the graders (a setup they can reproduce and verify
   rules; given that folder is missing or empty, it plays the main logo frames (and, if those are
   missing too, the FR-032 fallback).
 - **FR-029 (Must)** — Given `LANGSMITH_TRACING` is not `true`, Then the app still starts, and the
-  sidebar status shows a visible warning that runs are not traced (D-024: offline tests need tracing
+  sidebar's status button reads "Status: Not traced" (peach dot) and its modal says runs are not traced and how to turn tracing on (D-036, amending D-024) (D-024: offline tests need tracing
   off; normal use keeps it on, as assignment §3.3 requires).
 
 ### Logo animation
 - **FR-030 (Must)** — Given `assets/logo/` contains files matching `frame_*.txt`, Then the logo plays
   them in ascending filename order in a loop at a code-constant speed (default 8 frames per second,
-  D-020), animated by the browser with no Python loop or reruns.
+  D-020): rows that differ from the first frame (the mouth) switch on and off instantly over it; the
+  tentacle rows (from row 26 down) sway sideways on a wave, a whole number of pixels growing toward
+  the tips, one pixel per step; nothing moves by a fraction of a pixel and nothing else changes, so
+  the logo never flickers (D-041). All CSS, no Python loop or reruns. Ligatures are disabled so the
+  drawing renders exactly as the text file. Reduced-motion users get a still logo.
 - **FR-031 (Must)** — Given frame text containing `<`, `>`, `&` or quotes, Then it is displayed
   literally (escaped), never interpreted as HTML.
 - **FR-032 (Must)** — Given `assets/logo/` is missing or has no frames, Then a plain "Octi" title is
@@ -275,6 +290,7 @@ base before the deadline) and the graders (a setup they can reproduce and verify
 | `LITELLM_BASE_URL` | URL ending in `/v1` | yes | — | http(s) URL (FR-003) |
 | `LITELLM_API_KEY` | secret | yes | — | ≥ 8 chars |
 | `LLM_MODEL` | str | yes | — | non-empty |
+| `LLM_MODEL_CHOICES` | str | no | "" | comma-separated extra chat models for the picker (FR-024a) |
 | `EMBEDDING_MODEL` | str | yes | — | non-empty |
 | `EMBEDDING_DIMENSION` | int > 0 | no | 1536 | D-003 |
 | `LLM_TEMPERATURE` | float 0–2 | no | 0 | D-021 |
@@ -406,8 +422,13 @@ Service check (stubbed services)
   output does not contain `sk-FAKE-123`.
 
 Streamlit shell (Streamlit `AppTest`, services stubbed)
-- VC-025 (FR-019): app opens → sidebar with "New chat", both model names as captions, and the three
-  status items; toggle shows `Chat` selected; the LiteLLM stub records zero calls.
+- VC-025 (FR-019): app opens → sidebar buttons "Octi", "New chat" (with shortcut), "Library"; the
+  Documents section with "No documents yet"; the status popover holding the three status items and
+  the embedding model; view `Chat`; Library then "Octi" → back to Chat with the messages kept; no
+  emoji in the UI code (D-036);
+- VC-025b (FR-026a): 5 tables → 3 shown + "View all"; 7 PDFs → 5 shown + "Show more"; names escaped;
+- VC-025a (FR-024a): `LLM_MODEL_CHOICES="model-b, <LLM_MODEL>, model-c"` → picker options
+  `[LLM_MODEL, model-b, model-c]`, default `LLM_MODEL`; pick `model-b`, send a message → still `model-b`; the LiteLLM stub records zero calls.
 - VC-026 (FR-020): empty conversation → logo, greeting and composer present in that order, the
   composer rendered inline (not pinned).
 - VC-026a (FR-019a): `.streamlit/config.toml` sets background `#1e1e2e`, secondary background
@@ -427,7 +448,7 @@ Streamlit shell (Streamlit `AppTest`, services stubbed)
 - VC-030b (FR-025a): tick checkbox then Cancel; "New chat" again → modal still appears.
 - VC-030c (FR-025c): empty conversation, "New chat" → no modal.
 - VC-030d (FR-025b): a new `AppTest` session (refresh) after disabling warnings → modal appears again.
-- VC-031 (FR-026): select `Library` → empty-state message present.
+- VC-031 (FR-026): click the sidebar's "Library" row → empty-state message present; the row is highlighted.
 - VC-032 (FR-027, FR-027a): invalid configuration (`LITELLM_API_KEY` missing) → error screen: Octi
   plus a bubble naming `LITELLM_API_KEY`, the `.env.example` instruction and the README section; no
   exception escapes; no sidebar/composer rendered.
@@ -437,12 +458,14 @@ Streamlit shell (Streamlit `AppTest`, services stubbed)
   ends with `╯`; a reason containing `sk-FAKE-12345` → absent from the rendered screen.
 - VC-033b (FR-027c): error frames present → they are played; error folder empty → main frames
   played; both empty → plain "Octi" title.
-- VC-034 (FR-029): `LANGSMITH_TRACING=false` → sidebar warning present.
+- VC-034 (FR-029): `LANGSMITH_TRACING=false` → status button reads "Status: Not traced"; its popover states
+  that runs are not traced and names `LANGSMITH_TRACING=true`.
 - VC-035 (BR-008): two independent `AppTest` sessions → a message in one does not appear in the other.
 
 Logo
 - VC-036 (FR-030): frames `frame_02.txt`, `frame_01.txt`, `frame_10.txt` → rendered order 01, 02, 10;
-  rendered HTML contains one CSS animation whose total duration is 3 frames ÷ 8 fps = 0.375 s.
+  rendered HTML contains one CSS animation whose total duration is 3 frames ÷ 8 fps = 0.375 s; rows
+  above 26 do not sway, tentacle rows sway more the lower they are.
 - VC-037 (FR-031): frame containing `<script>&"` → rendered HTML contains the escaped entities and no
   `<script>` element.
 - VC-038 (FR-032): empty or missing folder → plain "Octi" title; no exception.
