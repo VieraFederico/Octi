@@ -85,6 +85,15 @@ def test_model_picker_offers_the_configured_models(start_app, make_settings) -> 
     assert at.session_state["model-picker"] == "model-b"
 
 
+def test_model_picker_cannot_be_typed_into(start_app) -> None:
+    """D-045: the picker is a plain dropdown; typing into it (Streamlit's default filter box) is off."""
+    from streamlit.proto.SelectWidgetFilterMode_pb2 import SelectWidgetFilterMode
+
+    picker = start_app().selectbox(key="model-picker")
+    assert picker.proto.filter_mode == SelectWidgetFilterMode.FILTER_MODE_NONE
+    assert not picker.proto.accept_new_options
+
+
 def test_empty_chat_shows_logo_greeting_and_inline_composer(start_app) -> None:
     """VC-026: empty conversation → logo, then greeting, then the composer inline (not pinned)."""
     at = start_app()

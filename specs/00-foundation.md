@@ -1,13 +1,17 @@
 # Spec 00 — Foundation
 
-- **Version:** 0.6
-- **Last updated:** 2026-10-09
-- **Status:** In implementation (review rounds 1–2 and the 2026-10-09 simplicity audit applied)
+- **Version:** 0.7
+- **Last updated:** 2026-10-10
+- **Status:** Implemented and verified (`/verify-spec` PASSED, 2026-10-10)
 - **Owner:** Federico Viera
-- **Changelog:** v0.6 — error bases are ordinary classes (FR-007a removed), missing index is a status
-  not an error, logging coverage scoped to Octi's handler, retries "3 by default", independent
-  service checks (FR-017, VC-022a), one live smoke test that runs the service check (FR-035), A-006.
-- **Decisions:** root `DECISIONS.md` D-001 … D-033 (project-wide). Spec-local decisions made during
+- **Changelog:** v0.7 — UI reviews during Iterations 4–6 (D-035 … D-042: sidebar, model picker, logo
+  frames, neutral palette and radii, error screen stacks below 900 px), "New chat" always shows the
+  Chat view (FR-025c), README without page map (D-043, VC-042), picker not typeable and smoother
+  panels (D-045), VC-011 covers BR-011 by review. v0.6 — error bases are ordinary classes (FR-007a
+  removed), missing index is a status not an error, logging coverage scoped to Octi's handler,
+  retries "3 by default", independent service checks (FR-017, VC-022a), one live smoke test that
+  runs the service check (FR-035), A-006.
+- **Decisions:** root `DECISIONS.md` D-001 … D-045 (project-wide). Spec-local decisions made during
   planning/implementation go to `specs/00-foundation-plan-artifacts/DECISIONS.md` as `S00-D-NNN` (D-004).
 - **Glossary:** `CONTEXT.md`
 
@@ -379,8 +383,9 @@ Model factories
   them.
 
 Errors and logging
-- VC-011 (FR-007): every class in the §7 tree exists with the parent shown; every leaf has a
-  non-empty `user_message`; every `ExternalServiceError` leaf reports its `service`.
+- VC-011 (FR-007, BR-011): every class in the §7 tree exists with the parent shown; every leaf has a
+  non-empty `user_message`; every `ExternalServiceError` leaf reports its `service`. BR-011 is checked
+  by review: each leaf has its own message or a distinct reaction in the code.
 - VC-012 (FR-008): in the setup script, a stubbed Pinecone client raising a connection error →
   `VectorStoreUnreachableError` with the original exception as `__cause__`; raising an authentication
   error → `VectorStoreAuthenticationError`; existing index with dimension 3072 → `IndexMismatchError`
@@ -434,7 +439,8 @@ Streamlit shell (Streamlit `AppTest`, services stubbed)
 - VC-026 (FR-020): empty conversation → logo, greeting and composer present in that order, the
   composer rendered inline (not pinned).
 - VC-026a (FR-019a): `.streamlit/config.toml` sets background `#1e1e2e`, secondary background
-  `#181825`, text `#cdd6f4`, primary `#cba6f7`.
+  `#181825`, text `#cdd6f4`, primary `#cdd6f4` (neutral controls, D-042); base and button radius
+  `0.75rem`.
 - VC-027 (FR-021, FR-022): submit "hello" → logo and greeting absent; composer pinned (top-level);
   history shows user "hello" then the assistant placeholder mentioning spec 02.
 - VC-028 (FR-023): attach `report.pdf` → user message shows `report.pdf`; assistant placeholder
@@ -485,7 +491,7 @@ Tests and docs
 - VC-042 (FR-036, NFR-004): README contains, in order: purpose, prerequisites, venv + install,
   `.env` setup with security notes, index setup, service check, tests, run the app (no page map:
   D-043); every line of `requirements.txt` uses `==`.
-- VC-043 (NFR-002, NFR-003, NFR-007): end-to-end manual check by the student: service check under
+- VC-043 (NFR-002, NFR-003, NFR-007, FR-019a, FR-020, FR-021, FR-027b): end-to-end manual check by the student: service check under
   60 s; first screen under 5 s; no horizontal scroll at 1280×800 and 375 px; in the empty state the
   logo, greeting and composer are centered (FR-020); the composer moves to the bottom after the
   first message (FR-021); the error screen stacks the bubble below Octi at 375 px (FR-027b); the

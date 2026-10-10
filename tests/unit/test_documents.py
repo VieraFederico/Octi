@@ -10,7 +10,7 @@ def test_no_documents_shows_the_empty_line() -> None:
 
 
 def test_a_pdf_lists_its_first_tables_and_hides_the_rest_behind_view_all() -> None:
-    """FR-026a: 5 tables → 3 visible, the other 2 inside a "View all" expander."""
+    """VC-025b (FR-026a): 5 tables → 3 visible, the other 2 inside a "View all" expander."""
     tables = [f"Table {number}" for number in range(1, 6)]
     html = documents_html([DocumentPreview("report.pdf", tables)])
     visible, _, hidden = html.partition("<details")
@@ -26,7 +26,7 @@ def test_a_pdf_with_few_tables_has_no_view_all() -> None:
 
 
 def test_more_pdfs_than_shown_go_behind_show_more() -> None:
-    """FR-026a: 7 PDFs → 5 visible, 2 inside "Show more"."""
+    """VC-025b (FR-026a): 7 PDFs → 5 visible, 2 inside "Show more"."""
     documents = [DocumentPreview(f"doc{number}.pdf") for number in range(7)]
     visible, _, hidden = documents_html(documents).partition("<details")
     assert all(f"doc{number}.pdf" in visible for number in range(DOCUMENTS_SHOWN))
@@ -34,7 +34,7 @@ def test_more_pdfs_than_shown_go_behind_show_more() -> None:
 
 
 def test_names_are_escaped() -> None:
-    """FR-031 spirit: a file or table name is shown, never run."""
+    """VC-025b (FR-026a, FR-031 spirit): a file or table name is shown, never run."""
     html = documents_html([DocumentPreview("<script>.pdf", ["a & b"])])
     assert "<script>" not in html
     assert "&lt;script&gt;.pdf" in html and "a &amp; b" in html

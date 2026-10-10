@@ -10,14 +10,14 @@ from ui.logo import ERROR_LOGO_DIR, LOGO_DIR, LOGO_FPS, load_frames, logo_html
 
 
 def test_frames_load_in_filename_order(tmp_path: Path) -> None:
-    """Frames play in filename order; unrelated files are ignored."""
+    """VC-036: frames play in filename order; unrelated files are ignored."""
     for name, text in {"frame_02.txt": "two", "frame_01.txt": "one", "frame_10.txt": "ten", "notes.md": "x"}.items():
         (tmp_path / name).write_text(text, encoding="utf-8")
     assert load_frames(tmp_path) == ["one", "two", "ten"]
 
 
 def test_html_has_one_animation_lasting_frames_over_fps() -> None:
-    """Three frames at 8 fps form a 0.375-second loop, without fades or transforms."""
+    """VC-036: three frames at 8 fps form a 0.375-second loop, without fades or transforms."""
     rendered = logo_html(["one", "two", "ten"])
     assert LOGO_FPS == 8
     assert len(re.findall(r"@keyframes ", rendered)) == 1
@@ -28,14 +28,14 @@ def test_html_has_one_animation_lasting_frames_over_fps() -> None:
 
 
 def test_frame_text_is_escaped() -> None:
-    """Art containing HTML syntax is displayed literally."""
+    """VC-037: art containing HTML syntax is displayed literally."""
     rendered = logo_html(['<script>alert(1)</script> & "quotes"'])
     assert "<script>" not in rendered
     assert "&lt;script&gt;" in rendered and "&amp;" in rendered and "&quot;" in rendered
 
 
 def test_missing_or_empty_folder_falls_back_to_title(tmp_path: Path) -> None:
-    """An empty or missing folder shows a plain title without animation."""
+    """VC-038: an empty or missing folder shows a plain title without animation."""
     assert load_frames(tmp_path / "missing") == []
     assert load_frames(tmp_path) == []
     assert "<h1>Octi</h1>" in logo_html([])
@@ -43,7 +43,7 @@ def test_missing_or_empty_folder_falls_back_to_title(tmp_path: Path) -> None:
 
 
 def test_idle_frames_swim_with_the_mouth_closed() -> None:
-    """Every idle frame keeps the head and closed mouth; only tentacles change."""
+    """VC-036, VC-039: every idle frame keeps the head and closed mouth; only tentacles change."""
     frames = [frame.splitlines() for frame in load_frames(LOGO_DIR)]
     assert len(frames) == 8
     assert all(frame[:26] == frames[0][:26] for frame in frames)
@@ -53,7 +53,7 @@ def test_idle_frames_swim_with_the_mouth_closed() -> None:
 
 
 def test_error_frames_open_the_mouth_while_swimming() -> None:
-    """The error bubble gets talking frames; head outside the mouth stays fixed."""
+    """VC-039: the error bubble gets talking frames; head outside the mouth stays fixed."""
     frames = [frame.splitlines() for frame in load_frames(ERROR_LOGO_DIR)]
     idle = [frame.splitlines() for frame in load_frames(LOGO_DIR)]
     assert len(frames) == len(idle) == 8

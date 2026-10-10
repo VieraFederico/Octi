@@ -1,6 +1,6 @@
 # Iteration 06 — Live smoke test, end-to-end checks and the README
 
-Commit SHA: (filled by student). Previous iteration (05) committed as `705105a`.
+Commit SHA: `25602ae` (student), plus the D-045 follow-up (to be committed). Previous iteration (05) committed as `705105a`.
 
 ## Criteria
 | Criterion | Command | Result |
@@ -10,8 +10,8 @@ Commit SHA: (filled by student). Previous iteration (05) committed as `705105a`.
 | VC-041: live smoke test passes | `pytest -m live` (real `.env`) | PASS — run by the student: 1 passed, 190 deselected in 11.5 s |
 | VC-042: README sections in order; requirements pinned | `pytest -q tests/unit/test_readme.py` | PASS (8); RED first (4 failing on the minimal README) |
 | README section titles used by the error screen exist | `pytest -q tests/unit/test_error_screen.py` | PASS |
-| VC-043: manual checklist (service check < 60 s, first screen < 5 s, no horizontal scroll at 1280×800 and 375 px, centered empty state, composer moves, error screen stacks, Catppuccin colors) | — | PENDING (student) |
-| Getting-started commands run in order by the student | — | PENDING (student) |
+| VC-043: manual checklist (service check < 60 s, first screen < 5 s, no horizontal scroll at 1280×800 and 375 px, centered empty state, composer moves, error screen stacks, Catppuccin colors) | — | PASS — reported fine by the student (2026-10-10), with two polish requests fixed in D-045 |
+| Getting-started commands run in order by the student | — | PASS — reported fine by the student (2026-10-10); `pytest -m live` passing exercises the same services |
 | Every decision reflected in the README or judged internal | review below | PASS |
 
 ## Decisions: README or internal
@@ -42,7 +42,13 @@ Architecture is a file tree; design decisions are titled bullet lists. Added `.g
 rewritten 13 unchanged files as CRLF. `test_readme.py` now checks
 `.gitignore` + `chmod 600` and no longer asks for the page map.
 `pytest -q`: 191 passed, 1 deselected.
-No new decisions (`DECISIONS.md` unchanged). No code change outside tests.
+
+After `/verify-spec`, the student asked for smoother panel openings and a picker that cannot be
+typed into (root D-045): `filter_mode=None` on the picker; `octi-pop-in` (fade, 6 px rise, 97 % scale,
+240 ms) on the status popover, model dropdown and modal, using the separate CSS `translate` / `scale`
+properties. New tests: `test_model_picker_cannot_be_typed_into`, `test_floating_panels_enter_without_animating_transform`.
+`pytest -q`: 192 passed, 1 deselected.
+Decisions added at root: D-043, D-044, D-045 (none spec-local).
 
 ## Deviations
 - VC-042 is checked by a unit test, not a recorded grep (the plan allowed either); the test also guards

@@ -82,5 +82,9 @@ def _composer_bar(model_choices: list[str]) -> Any:
     with st.container(key="composer-bar"):
         # accept_file + file_type: the "+" button only accepts PDFs (FR-024).
         submission = st.chat_input(COMPOSER_PLACEHOLDER, accept_file=True, file_type=["pdf"], key="composer")
-        st.selectbox("Chat model", model_choices, key=MODEL_PICKER, label_visibility="collapsed", width=PICKER_WIDTH_PX)
+        # filter_mode=None: a plain dropdown; without it Streamlit lets the user type into the picker (D-045).
+        st.selectbox(
+            "Chat model", model_choices, key=MODEL_PICKER, label_visibility="collapsed", width=PICKER_WIDTH_PX,
+            filter_mode=None,
+        )
     return submission

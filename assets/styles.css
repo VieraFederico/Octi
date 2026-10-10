@@ -40,6 +40,8 @@
   --octi-ease: cubic-bezier(0.22, 1, 0.36, 1);   /* fast start, soft landing */
   --octi-fast: 160ms;
   --octi-enter: 260ms;
+  --octi-glide: cubic-bezier(0.25, 0.8, 0.25, 1);   /* gentle start and end: floating panels (D-045) */
+  --octi-panel-in: 240ms;
 }
 
 /* ---- Page ------------------------------------------------------------------------------------ */
@@ -153,13 +155,23 @@
 .octi-status-note { padding-top: 0.5rem; margin-top: 0.4rem; border-top: 1px solid var(--octi-surface0);
   color: var(--octi-subtext0); font-size: 0.85rem; }
 
-/* Popovers and dialogs fade in. Opacity only: Streamlit places a popover with `transform`, so
-   animating `transform` here would start it at the page's corner and slide it to its button. */
+/* Floating panels (the status popover, the model dropdown, the "New chat" modal) glide in: they fade,
+   rise 6 px and grow from 97 % (D-045). Streamlit places popovers with `transform`, so animating
+   `transform` would start them at the page's corner (D-038). The separate `translate` and `scale`
+   properties are applied on top of `transform` instead of replacing it, so the position is kept. */
 [data-testid="stPopoverBody"],
-[data-testid="stDialog"] [role="dialog"] { animation: octi-fade-in var(--octi-enter) var(--octi-ease); }
+[data-testid="stSelectboxVirtualDropdown"],
+[data-testid="stDialog"] [role="dialog"] {
+  animation: octi-pop-in var(--octi-panel-in) var(--octi-glide) both;
+  transform-origin: bottom center;   /* the popover and the dropdown open upward from their buttons */
+}
 [data-testid="stPopoverBody"] { border-radius: var(--octi-radius-panel); }
 [data-testid="stDialog"] > div { border-radius: var(--octi-radius-panel); }
-[data-testid="stDialog"] [role="dialog"] { border-radius: var(--octi-radius-panel); }
+[data-testid="stDialog"] [role="dialog"] { border-radius: var(--octi-radius-panel); transform-origin: center; }
+@keyframes octi-pop-in {
+  from { opacity: 0; translate: 0 6px; scale: 0.97; }
+  to   { opacity: 1; translate: 0 0; scale: 1; }
+}
 @keyframes octi-fade-in { from { opacity: 0; } to { opacity: 1; } }
 
 /* The destructive label is explicit; its button uses the same neutral primary treatment. */
@@ -305,7 +317,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .octi-logo-frame,
-  [data-testid="stChatMessage"], [data-testid="stPopoverBody"], [data-testid="stDialog"] [role="dialog"] {
+  [data-testid="stChatMessage"], [data-testid="stPopoverBody"], [data-testid="stSelectboxVirtualDropdown"],
+  [data-testid="stDialog"] [role="dialog"] {
     animation: none !important;
   }
 }
