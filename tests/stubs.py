@@ -32,6 +32,9 @@ OK_INDEX = IndexStatus("ok", 1536, "cosine", 1536, "cosine")
 MISSING_INDEX = IndexStatus(
     "missing", 1536, "cosine", reason="The Pinecone index 'octi-tables' does not exist. Create it with: python -m scripts.setup_index"
 )
+MISMATCH_INDEX = IndexStatus("mismatch", 1536, "cosine", 3072, "dotproduct", reason="The Pinecone index has the wrong shape.")
+# A reason that (wrongly) carries a key: the error screen must never echo a reason (VC-033a).
+UNREACHABLE_INDEX = IndexStatus("unreachable", 1536, "cosine", reason=f"connection refused for key {FAKE_PINECONE_KEY}")
 
 
 class StubPineconeClient:

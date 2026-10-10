@@ -174,7 +174,8 @@ base before the deadline) and the graders (a setup they can reproduce and verify
 - **FR-025b (Must)** — Given warnings are disabled for this session, When the user clicks "New chat"
   with messages, Then the conversation is cleared immediately, without a modal.
 - **FR-025c (Must)** — Given the conversation is empty, When the user clicks "New chat", Then no modal
-  appears and nothing changes.
+  appears and the conversation does not change. In every case "New chat" shows the Chat view (from
+  Library too); the modal, when there is one, opens over it (S00-D-023).
 - **FR-026a (Must)** — The sidebar's "Documents" section lists the ingested PDFs (5 shown, the rest
   behind "Show more"), each with up to 3 of its table titles nested under it (the rest behind
   "View all"); both expanders open in place without a rerun and read "Show less" while open. Names are

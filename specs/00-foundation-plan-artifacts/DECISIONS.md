@@ -113,3 +113,27 @@
 **Decision**: Added `ui/startup.py` (the cached start-up check, `Startup` result, test seam) and `ui/library.py` (Library view; grows in spec 01). `app.py` stays a thin script.
 **Rejected**: Start-up logic inside `app.py` (untestable seam); Library inside `chat.py` (unrelated view).
 **Consequences**: The error screen (Iteration 5) reads `Startup` to decide what to show.
+
+## S00-D-020: Startup holds facts; the error screen owns the words  (Iteration 5)
+**Context**: Iteration 4's `Startup.problem` was ready-made text from `ui/startup.py`; the mismatch text had no fix, and VC-033a forbids echoing an index `reason`.
+**Decision** (student's choice): `Startup(settings, index_status, settings_error)` with an `ok` property. `ui/error_screen.error_message` builds every message as what failed + what to do + "Read: README › <section>": config from the settings error's `user_message` (names and rules, never values); index messages from the status fields (outcome, expected/actual shape) and the index name, never from `reason`.
+**Rejected**: Keep `problem` and only append the README section (wording split across two modules; the reason text would reach the screen).
+**Consequences**: The README section titles are constants in `ui/error_screen.py`; `test_every_readme_section_named_on_the_screen_exists` fails if Iteration 6 renames them.
+
+## S00-D-021: Bubble tail on the middle row, hidden when stacked  (Iteration 5)
+**Context**: FR-027a asks for a tail pointing at Octi; under 640 px the bubble sits below Octi (FR-027b).
+**Decision** (student's choice): `<─────┤` sticks out of the left border on the middle row; every other row has a same-width gutter so the box stays aligned. Under 640 px the CSS hides tail and gutter, shows a plain `│` in the tail's place, and shrinks the font so 52 characters fit the width.
+**Rejected**: A comic tail under the bottom-left corner.
+**Consequences**: The bubble is three kinds of `<span>` inside one `<pre>` (`ui/bubble.py`); the box itself stays plain text that tests read with `bubble_lines`.
+
+## S00-D-022: Red Erase button  (Iteration 5)
+**Context**: Erase is destructive; the primary color (Mauve) reads as a normal action.
+**Decision** (student's choice): Erase is tinted Catppuccin Red (`--octi-red`, D-029) through its `.st-key-new-chat-erase` class; Cancel is a tertiary (text) button. Copy: title "Start a new chat?", body "This erases the current conversation. It can't be undone.", checkbox "Don't warn me again".
+**Rejected**: Mauve primary.
+**Consequences**: One CSS rule; no theme change.
+
+## S00-D-023: The modal's open state lives in session state  (Iteration 5)
+**Context**: A click inside `st.dialog` reruns only the dialog in the browser, but a full script run (AppTest, or `st.rerun`) does not call the dialog again unless the code does.
+**Decision**: `CONFIRMING` flag in session state; `app.py` calls `render_new_chat_dialog()` every run and it opens the dialog while the flag is set. Erase / Cancel are plain `if st.button(...)` checks that clear it and call `st.rerun()` (a full rerun redraws the chat behind the modal); dismissing (X, Esc, outside click) is Cancel through `on_dismiss`. "New chat" always switches to the Chat view before deciding (FR-025c amended). `clear_conversation()` left `ui/chat.py`; clearing is `ui/new_chat.py`'s job.
+**Rejected**: Calling the dialog once, when the button is clicked, with no flag: the dialog only exists in runs that call it, so the next full run (e.g. AppTest clicking Erase) would not see its buttons.
+**Consequences**: AppTest drives the whole modal (VC-030 … VC-030d), so the plan's flagged risk did not materialise.

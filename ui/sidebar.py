@@ -14,9 +14,9 @@ import html
 import streamlit as st
 
 from services.settings import Settings
-from ui.chat import clear_conversation
 from ui.documents import documents_html, load_documents
 from ui.icons import CHECK, WARNING, img_tag
+from ui.new_chat import request_new_chat
 
 VIEW = "view"  # session-state key of the selected view
 CHAT, LIBRARY = "Chat", "Library"
@@ -34,7 +34,6 @@ def render_sidebar(settings: Settings) -> None:
         st.button("Octi", key="home", on_click=_select, args=(CHAT,), type="tertiary", help="Back to the chat")
 
         with st.container(key="sidebar-nav"):
-            # Plain clear for now; the confirmation modal replaces it in the next iteration (FR-025).
             st.button(
                 "New chat", key="nav-new", icon=":material/add:", on_click=_new_chat, shortcut=NEW_CHAT_SHORTCUT,
                 type="tertiary", width="stretch",
@@ -81,5 +80,5 @@ def _select(name: str) -> None:
 
 
 def _new_chat() -> None:
-    clear_conversation()
-    st.session_state[VIEW] = CHAT  # a new chat is always shown in the Chat view
+    st.session_state[VIEW] = CHAT  # a new chat is always shown in the Chat view (the modal opens over it)
+    request_new_chat(st.session_state)  # clears, asks first, or does nothing (ui/new_chat.py)

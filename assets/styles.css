@@ -27,6 +27,7 @@
   --octi-white: #ffffff;   /* the Octi logo */
   --octi-green: #a6e3a1;
   --octi-peach: #fab387;
+  --octi-red: #f38ba8;     /* destructive actions and errors (D-029) */
 
   /* type and shape */
   --octi-font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -162,6 +163,13 @@
 [data-testid="stDialog"] [role="dialog"] { border-radius: var(--octi-radius-lg); }
 @keyframes octi-fade-in { from { opacity: 0; } to { opacity: 1; } }
 
+/* "New chat" modal: Erase erases the conversation, so it is red; Cancel stays a quiet text button. */
+.st-key-new-chat-erase button {
+  background: var(--octi-red); border-color: var(--octi-red); color: var(--octi-base);
+  transition: opacity var(--octi-fast) var(--octi-ease);
+}
+.st-key-new-chat-erase button:hover { opacity: 0.85; border-color: var(--octi-red); color: var(--octi-base); }
+
 /* ---- Chat ------------------------------------------------------------------------------------ */
 
 /* Messages: no avatars; the user's text in a rounded bubble on the right, Octi's as plain text.
@@ -247,6 +255,34 @@
 @keyframes octi-swim {
   from { transform: translate3d(calc(var(--amp) * -1), 0, 0); }
   to   { transform: translate3d(var(--amp), 0, 0); }
+}
+
+/* ---- Error screen (see `ui/error_screen.py` and `ui/bubble.py`) ------------------------------ */
+
+/* Octi on the left, the speech bubble on the right, both centered in the page (FR-027a). */
+.octi-error {
+  min-height: 80vh; display: flex; align-items: center; justify-content: center; gap: 1.5rem;
+}
+.octi-error-octi { flex: none; }
+
+/* The bubble is text, like the logo: monospace, no ligatures, never wrapped by the browser (the
+   Python side already wrapped it to 48 characters). */
+.octi-bubble {
+  margin: 0; padding: 0; background: transparent; color: var(--octi-text);
+  font-family: var(--octi-font-mono); font-size: 0.75rem; line-height: 1.35; white-space: pre;
+  font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0;
+  text-align: left; max-width: 100%; overflow-x: auto;
+}
+.octi-bubble-notail { display: none; }   /* the plain border under the tail, used when stacked */
+
+/* Narrow screens: the bubble goes under Octi (FR-027b). The tail would point at nothing, so it and the
+   gutter are hidden and the plain border is shown. The font shrinks so 52 characters (48 of text plus
+   the frame) fit the screen width: a JetBrains Mono character is 0.6 em wide, 52 × 0.6 = 31.2. */
+@media (max-width: 640px) {
+  .octi-error { flex-direction: column; gap: 1rem; }
+  .octi-bubble-tail, .octi-bubble-gutter { display: none; }
+  .octi-bubble-notail { display: inline; }
+  .octi-bubble { font-size: min(0.75rem, calc((100vw - 3rem) / 31.2)); }
 }
 
 /* ---- Reduced motion -------------------------------------------------------------------------- */

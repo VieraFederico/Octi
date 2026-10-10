@@ -2,7 +2,9 @@
 
 Runs once per server process (`st.cache_resource`), not on every rerun, and makes no LiteLLM call
 (D-025): the full service check stays in `scripts/check_services.py`. Because the result is cached,
-fixing `.env` or creating the index needs an app restart, and the messages say so.
+fixing `.env` or creating the index needs an app restart, and the error screen says so.
+
+`Startup` holds facts only; the words shown to the user are built in `ui/error_screen.py`.
 """
 
 from dataclasses import dataclass
@@ -17,11 +19,16 @@ from services.vector_store import IndexStatus, check_index
 
 @dataclass(frozen=True)
 class Startup:
-    """The start-up result. `problem` is empty when the shell can open; otherwise it is safe UI text."""
+    """The start-up result: settings (or why they failed) and the index status (when settings parsed)."""
 
     settings: Settings | None
     index_status: IndexStatus | None
-    problem: str = ""
+    settings_error: InvalidSettingsError | None = None
+
+    @property
+    def ok(self) -> bool:
+        """True when the shell can open: settings parsed and the index is ready (D-031)."""
+        return self.settings_error is None and self.index_status is not None and self.index_status.outcome == "ok"
 
 
 @st.cache_resource(show_spinner="Checking the configuration and the Pinecone index…")
@@ -29,10 +36,6 @@ def load_startup() -> Startup:
     try:
         settings = get_settings()
     except InvalidSettingsError as exc:
-        return Startup(None, None, f"{exc.user_message}\n\nFix them in .env (see .env.example), then restart the app.")
+        return Startup(None, None, exc)
     configure_logging(settings)
-
-    status = check_index(settings)
-    if status.outcome != "ok":
-        return Startup(settings, status, f"{status.reason}\n\nThen restart the app.")
-    return Startup(settings, status)
+    return Startup(settings, check_index(settings))

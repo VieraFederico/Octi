@@ -1,10 +1,12 @@
-"""The Streamlit shell, driven by Streamlit's AppTest (spec FR-019 … FR-026, FR-029, BR-008)."""
+"""The Streamlit shell, driven by Streamlit's AppTest (spec FR-019 … FR-026, FR-029, BR-008).
+
+The "New chat" modal and the error screen have their own files: `test_new_chat_modal.py`,
+`test_error_screen.py`.
+"""
 
 import tomllib
 
-from services.errors import InvalidSettingsError
 from services.settings import REPO_ROOT
-from tests.stubs import MISSING_INDEX
 
 # AppTest's top-level containers: the main area and the bottom bar where a pinned composer lives.
 MAIN, BOTTOM = 0, 3
@@ -126,18 +128,6 @@ def test_first_message_shows_history_and_pins_the_composer(start_app) -> None:
     assert "spec 02" in texts[1]
 
 
-def test_new_chat_clears_the_conversation(start_app) -> None:
-    """FR-025 (plain clear until the confirmation modal arrives): "New chat" empties the history and
-    shows the Chat view, even when it is clicked from the Library view."""
-    at = start_app()
-    at.chat_input[0].set_value("hello").run()
-    sidebar_button(at, "nav-library").click().run()
-    sidebar_button(at, "nav-new").click().run()
-    assert len(at.chat_message) == 0
-    assert at.session_state["view"] == "Chat"
-    assert roots_with_composer(at) == [MAIN]
-
-
 def test_library_view_shows_the_empty_state(start_app) -> None:
     """VC-031: selecting Library → a message saying no tables are indexed yet."""
     at = start_app()
@@ -163,22 +153,3 @@ def test_two_sessions_do_not_share_the_conversation(start_app) -> None:
     second = start_app()
     assert len(first.chat_message) == 2
     assert len(second.chat_message) == 0
-
-
-# --- Start-up problems (plain error until the Octi error screen arrives) ---------------------------
-
-
-def test_invalid_configuration_shows_an_error_instead_of_the_shell(start_app) -> None:
-    """FR-027 (interim): invalid configuration → error naming the variable; no sidebar, no composer, no crash."""
-    at = start_app(settings_error=InvalidSettingsError({"LITELLM_API_KEY": "missing"}))
-    assert not at.exception
-    assert "LITELLM_API_KEY" in at.error[0].value
-    assert not at.sidebar.button
-    assert not at.chat_input
-
-
-def test_missing_index_shows_the_setup_command(start_app) -> None:
-    """FR-028 (interim): index `missing` → error with the setup command; no shell."""
-    at = start_app(index_status=MISSING_INDEX)
-    assert "python -m scripts.setup_index" in at.error[0].value
-    assert not at.chat_input

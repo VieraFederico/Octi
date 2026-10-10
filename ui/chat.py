@@ -62,10 +62,6 @@ def chosen_model(model_choices: list[str]) -> str:
     return st.session_state.get(MODEL_PICKER) or model_choices[0]
 
 
-def clear_conversation() -> None:
-    st.session_state[MESSAGES] = []
-
-
 def submission_parts(submission: Any) -> tuple[str, list[str]]:
     """The text and the attached file names. File contents are never read, so no PDF is stored (FR-023)."""
     return submission.text or "", [uploaded.name for uploaded in submission.files]
