@@ -5,14 +5,15 @@ base = "dark"
 backgroundColor = "#1e1e2e"           # base
 secondaryBackgroundColor = "#181825"  # mantle
 textColor = "#cdd6f4"                 # text
-primaryColor = "#cba6f7"              # mauve: buttons, focus, links
+primaryColor = "#cdd6f4"              # text: neutral controls, focus and links (D-042)
 redColor = "#f38ba8"                  # errors
 yellowColor = "#f9e2af"               # warnings
 orangeColor = "#fab387"               # peach: "not traced" status dot
 greenColor = "#a6e3a1"                # green: "all systems ready" status dot
 borderColor = "#313244"               # surface0
 showSidebarBorder = false
-baseRadius = "1rem"                   # rounder widgets everywhere (D-039)
+baseRadius = "0.75rem"                # shared control radius (D-042)
+buttonRadius = "0.75rem"
 font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap, sans-serif"
 codeFont = "JetBrains Mono:https://fonts.googleapis.com/css2?family=JetBrains+Mono&display=swap, monospace"
 

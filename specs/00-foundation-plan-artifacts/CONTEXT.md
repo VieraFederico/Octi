@@ -1,4 +1,4 @@
-# CONTEXT — Spec 00 Foundation (after Iteration 5)
+# CONTEXT — Spec 00 Foundation (after Iteration 6: spec 00 complete, starting state for spec 01)
 
 ## Current state
 - Typed configuration: `.env` (repo root) → `os.environ` → `Settings`, parsed once, fail-fast with names only.
@@ -9,7 +9,10 @@
   picker in the composer (`LLM_MODEL` + `LLM_MODEL_CHOICES`); swimming ASCII Octi, animated Octi logo, chat history with placeholder replies, PDF-only composer.
 - "New chat" with messages asks first (modal: Erase / Cancel / "Don't warn me again", session-scoped opt-out).
 - Invalid configuration or a non-`ok` index → the Octi error screen (talking Octi + ASCII speech bubble) instead of the shell.
-- Offline pytest harness (network and real `.env` blocked): unit + AppTest functional tests. Minimal README.
+- Offline pytest harness (network and real `.env` blocked): unit + AppTest functional tests; one live smoke test (`pytest -m live`).
+- README (D-043): setup guide in D-023 order, project architecture (file tree), design decisions (titled bullet lists), Credits
+  (guarded by `test_readme.py`). Written for the grader: no page map, troubleshooting, known-limits or logo-editing sections. Assignment §9 requires
+  known limitations, an architecture diagram of both graphs and design decisions: spec 03 adds them.
 
 ## File map
 - `services/settings.py` — configuration boundary; the only module that reads `os.environ`.
@@ -30,8 +33,9 @@
 - `tests/conftest.py` — pytest wiring only: autouse guards + `fake_env`, `make_settings`.
 - `tests/stubs.py` — fake keys, stubs, index statuses, `always` / `failing` / `healthy_clients`.
 - `tests/unit/` — one test file per module. `tests/functional/` — AppTest tests + `conftest.py` (`start_app`).
-- `README.md` (minimal getting started + Credits), `requirements.txt`, `pytest.ini`, `.env.example`.
-- Empty: `tests/live/`.
+- `tests/live/test_smoke.py` — the one live test: `run_checks()` against the real services, no FAIL line (FR-035).
+- `tests/unit/test_readme.py` — README structure (VC-042 order, security and retry notes, pages, Credits last) + pinned requirements.
+- `README.md`, `requirements.txt`, `pytest.ini`, `.env.example`.
 
 ## Public interfaces (owner → read the code there; spec §7 is the contract)
 - Configuration: `get_settings()`, `Settings.from_mapping()` → `services/settings.py`.
@@ -67,7 +71,8 @@
 ```bash
 # student, once: create venv and install
 python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
-pytest -q                          # offline suite (live tests excluded by pytest.ini), ~22 s
+pytest -q                          # offline suite (live tests excluded by pytest.ini), ~26 s
+pytest -m live                     # student only: the live smoke test, real .env
 python -m scripts.setup_index      # student only: real Pinecone, real .env
 python -m scripts.check_services   # student only: real services, real .env
 streamlit run app.py               # student only: the app
@@ -76,7 +81,7 @@ streamlit run app.py               # student only: the app
 ## Known gaps
 - The error screen and the modal are checked by AppTest only; the 375 px stacking and the red Erase are a manual check (VC-043).
 - AppTest cannot attach files to the composer (S00-D-018): real PDF attachment is a manual check.
-- Live test (one test calling `run_checks()`) and the full README → Iteration 6.
 - Logging redaction covers Octi's handler only (spec FR-009).
 - `Settings` defaults are not exported to the environment (spec A-006) — specs 01/02 must keep tracing on when a variable is omitted.
-- The student has not yet run `check_services` or the app against the real services.
+- Agents, table store and sandbox: specs 01/02. Library and sidebar Documents stay empty until spec 01 replaces `ui/documents.load_documents()`.
+- The error screen points to README step titles "Configure your secrets", "Create the Pinecone index", "Check every service": rename them together with the constants in `ui/error_screen.py`.

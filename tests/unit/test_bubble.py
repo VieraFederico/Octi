@@ -1,6 +1,7 @@
 """The ASCII speech bubble of the error screen (spec FR-027a, D-032)."""
 
 from ui.bubble import BUBBLE_WIDTH, bubble_html, bubble_lines
+from html.parser import HTMLParser
 
 LONG_TEXT = (
     "The Pinecone index 'octi-tables' does not exist yet. Octi needs it before it can store any table."
@@ -51,3 +52,28 @@ def test_bubble_text_is_escaped() -> None:
     html = bubble_html('<script>alert(1)</script> & "quotes"')
     assert "<script>" not in html
     assert "&lt;script&gt;" in html
+
+
+def test_bubble_rows_keep_text_and_border_in_separate_columns() -> None:
+    """Box glyphs from a fallback font cannot change the width of the text column."""
+    class Rows(HTMLParser):
+        def __init__(self) -> None:
+            super().__init__()
+            self.rows = []
+            self.current = None
+
+        def handle_starttag(self, tag, attrs) -> None:
+            classes = dict(attrs).get("class", "")
+            if classes == "octi-bubble-row":
+                self.current = []
+                self.rows.append(self.current)
+            elif classes == "octi-bubble-text":
+                self.current.append("text")
+            elif classes == "octi-bubble-rule":
+                self.current.append("rule")
+
+    rendered = bubble_html("first\n\nlast", width=12)
+    rows = Rows()
+    rows.feed(rendered)
+    assert rows.rows == [["rule"], ["text"], ["text"], ["text"], ["rule"]]
+    assert '--octi-bubble-columns: 14' in rendered

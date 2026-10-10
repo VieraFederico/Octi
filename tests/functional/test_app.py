@@ -102,7 +102,8 @@ def test_theme_is_catppuccin_mocha() -> None:
     assert theme["backgroundColor"] == "#1e1e2e"
     assert theme["secondaryBackgroundColor"] == "#181825"
     assert theme["textColor"] == "#cdd6f4"
-    assert theme["primaryColor"] == "#cba6f7"
+    assert theme["primaryColor"] == "#cdd6f4"
+    assert theme["baseRadius"] == theme["buttonRadius"] == "0.75rem"
 
 
 def test_composer_accepts_only_pdf_files(start_app) -> None:

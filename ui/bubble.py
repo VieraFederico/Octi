@@ -6,9 +6,10 @@
     │ What to do.      │
     ╰──────────────────╯
 
-Pure functions: `bubble_lines` builds the box as plain text (tests read it); `bubble_html` adds the
-tail and escapes the text. Below 640 px the bubble sits under Octi, so `assets/styles.css` hides
-the tail and the gutter, and shows a plain `│` in the tail's place.
+Pure functions: `bubble_lines` builds the plain text box; `bubble_html` places the
+border and text in fixed character columns. Some fallback fonts give box-drawing
+glyphs a different width from letters, so a raw pre alone cannot align the border.
+Below 900px CSS hides the tail/gutter and restores the plain left border.
 """
 
 import html
@@ -34,18 +35,26 @@ def bubble_lines(text: str, width: int = BUBBLE_WIDTH) -> list[str]:
 
 
 def bubble_html(text: str, width: int = BUBBLE_WIDTH) -> str:
-    """The bubble as one `<pre>`, with the tail on the middle row. Render it with `st.html`."""
+    """An ASCII bubble with fixed border columns and a tail pointing towards Octi."""
     lines = bubble_lines(text, width)
     tail_row = len(lines) // 2  # always a text row: there are at least 3 lines (top, text, bottom)
     rows = []
     for index, line in enumerate(lines):
-        escaped = html.escape(line, quote=True)  # the text is shown, never run (same rule as the logo)
+        left, body, right = line[0], line[1:-1], line[-1]
+        rule = index in (0, len(lines) - 1)
+        # Extra rule glyphs fill the fixed column even when a font makes ─ narrower than letters.
+        content = html.escape(body * 2 if rule else body, quote=True)
+        body_class = "octi-bubble-rule" if rule else "octi-bubble-text"
         if index == tail_row:
             # Wide screen: "<─────┤" replaces the left "│". Narrow screen: the CSS swaps them back.
-            rows.append(
+            border = (
                 f'<span class="octi-bubble-tail">{html.escape(TAIL)}┤</span>'
-                f'<span class="octi-bubble-notail">│</span>{escaped[1:]}'
+                '<span class="octi-bubble-notail">│</span>'
             )
         else:
-            rows.append(f'<span class="octi-bubble-gutter">{GUTTER}</span>{escaped}')
-    return '<pre class="octi-bubble">' + "\n".join(rows) + "</pre>"
+            border = f'<span class="octi-bubble-gutter">{GUTTER}</span><span>{left}</span>'
+        rows.append(
+            f'<span class="octi-bubble-row">{border}'
+            f'<span class="{body_class}">{content}</span><span>{right}</span></span>'
+        )
+    return f'<pre class="octi-bubble" style="--octi-bubble-columns: {width + 2}">' + "\n".join(rows) + "</pre>"

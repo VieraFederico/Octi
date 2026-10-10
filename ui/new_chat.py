@@ -73,6 +73,6 @@ def _confirm() -> None:
         if st.button("Cancel", key="new-chat-cancel", type="tertiary"):
             cancel(st.session_state)
             st.rerun()
-        if st.button("Erase", key="new-chat-erase", type="primary"):  # tinted red by assets/styles.css
+        if st.button("Erase", key="new-chat-erase", type="primary"):
             erase(st.session_state, dont_warn_again)
             st.rerun()

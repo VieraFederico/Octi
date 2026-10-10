@@ -148,8 +148,10 @@ base before the deadline) and the graders (a setup they can reproduce and verify
   Then the logo and greeting are not shown, the message history is shown, and the composer is pinned
   to the bottom of the page (D-028).
 - **FR-019a (Must)** — The UI uses the Catppuccin Mocha palette: background base `#1e1e2e`, secondary
-  background mantle `#181825`, text `#cdd6f4`, accent Mauve `#cba6f7` (buttons, focus, links),
-  errors Red `#f38ba8`, warnings Yellow `#f9e2af` (D-029); the ASCII logo is white (D-039).
+  background mantle `#181825`, text and neutral control accent `#cdd6f4` (buttons, focus, links),
+  errors Red `#f38ba8`, warnings Yellow `#f9e2af`; the ASCII logo is white. Controls use a
+  0.75rem radius and panels, composer and user messages use 1rem (D-042, amending D-029/D-039).
+  The empty-chat composer is at least 120px tall with attachment, model picker and send along its lower edge.
 - **FR-022 (Must)** — Given the user submits text in the composer, Then the text appears as a user
   message followed by an assistant message stating that answering arrives in spec 02.
 - **FR-023 (Must)** — Given the user attaches a PDF with the composer's "+", Then a user message shows
@@ -193,7 +195,7 @@ base before the deadline) and the graders (a setup they can reproduce and verify
   bubble on the right: text wrapped to at most 48 characters per line, framed with box characters
   (`╭ ─ ╮ │ ╰ ╯`) and a tail pointing at Octi. The bubble contains: what failed, what to do, and the
   README section to read; never a secret value or raw library text (D-032).
-- **FR-027b (Must)** — Given a viewport narrower than 640 px, Then the speech bubble renders below
+- **FR-027b (Must)** — Given a viewport narrower than 900 px, Then the speech bubble renders below
   Octi instead of to the right.
 - **FR-027c (Must)** — The error screen's Octi plays `assets/logo/error/frame_*.txt` with the FR-030
   rules; given that folder is missing or empty, it plays the main logo frames (and, if those are
@@ -205,18 +207,17 @@ base before the deadline) and the graders (a setup they can reproduce and verify
 ### Logo animation
 - **FR-030 (Must)** — Given `assets/logo/` contains files matching `frame_*.txt`, Then the logo plays
   them in ascending filename order in a loop at a code-constant speed (default 8 frames per second,
-  D-020): rows that differ from the first frame (the mouth) switch on and off instantly over it; the
-  tentacle rows (from row 26 down) sway sideways on a wave, a whole number of pixels growing toward
-  the tips, one pixel per step; nothing moves by a fraction of a pixel and nothing else changes, so
-  the logo never flickers (D-041). All CSS, no Python loop or reruns. Ligatures are disabled so the
-  drawing renders exactly as the text file. Reduced-motion users get a still logo.
+  D-020): complete text frames switch instantly with CSS visibility; movement is drawn inside the
+  text files, with no transforms or fades (D-042). All frames share a fixed canvas; no Python loop
+  or reruns. Ligatures are disabled so the drawing renders exactly as the text file.
+  Reduced-motion users get the first frame, still.
 - **FR-031 (Must)** — Given frame text containing `<`, `>`, `&` or quotes, Then it is displayed
   literally (escaped), never interpreted as HTML.
 - **FR-032 (Must)** — Given `assets/logo/` is missing or has no frames, Then a plain "Octi" title is
   shown instead and no error is raised.
 - **FR-033 (Must)** — The repo ships the student's Octi art (D-035): 8 main frames (mouth closed in
-  the first 7, open in the 8th, so at 8 fps Octi opens his mouth for 1/8 s once per second) and 2
-  error frames (closed, open: Octi "talks" next to the speech bubble).
+  all main frames, with movement only below row 26) and 8 error frames (closed/open pairs:
+  Octi "talks" only next to the error speech bubble), per D-042.
 
 ### Tests and docs
 - **FR-034 (Must)** — Given the default test command, Then all tests run with no network access and
@@ -466,12 +467,12 @@ Streamlit shell (Streamlit `AppTest`, services stubbed)
 Logo
 - VC-036 (FR-030): frames `frame_02.txt`, `frame_01.txt`, `frame_10.txt` → rendered order 01, 02, 10;
   rendered HTML contains one CSS animation whose total duration is 3 frames ÷ 8 fps = 0.375 s; rows
-  above 26 do not sway, tentacle rows sway more the lower they are.
+  above 26 stay fixed in the shipped idle frames, while tentacles change within the text.
 - VC-037 (FR-031): frame containing `<script>&"` → rendered HTML contains the escaped entities and no
   `<script>` element.
 - VC-038 (FR-032): empty or missing folder → plain "Octi" title; no exception.
-- VC-039 (FR-033): repo contains 8 `assets/logo/frame_*.txt` (first 7 identical, the 8th different)
-  and 2 `assets/logo/error/frame_*.txt` (the closed and the open frame).
+- VC-039 (FR-033): repo contains 8 `assets/logo/frame_*.txt` with an unchanged closed mouth
+  and distinct tentacles, and 8 `assets/logo/error/frame_*.txt` with two mouth poses.
 
 Tests and docs
 - VC-040 (FR-034, NFR-001, NFR-006): default `pytest` with network disabled → all pass, zero network
@@ -482,8 +483,8 @@ Tests and docs
 - VC-041 (FR-035): `pytest -m live` with a valid `.env` → the live service-check test reports no
   `FAIL` line (manual, by the student).
 - VC-042 (FR-036, NFR-004): README contains, in order: purpose, prerequisites, venv + install,
-  `.env` setup with security notes, index setup, service check, tests, run the app, where each §7
-  page lives; every line of `requirements.txt` uses `==`.
+  `.env` setup with security notes, index setup, service check, tests, run the app (no page map:
+  D-043); every line of `requirements.txt` uses `==`.
 - VC-043 (NFR-002, NFR-003, NFR-007): end-to-end manual check by the student: service check under
   60 s; first screen under 5 s; no horizontal scroll at 1280×800 and 375 px; in the empty state the
   logo, greeting and composer are centered (FR-020); the composer moves to the bottom after the

@@ -1,0 +1,4 @@
+# Line endings (decision D-044): every text file is stored and checked out with LF, on every OS.
+# Octi is edited on macOS and Windows; without this rule, Windows tools rewrite whole files as CRLF
+# and git reports every line as changed. Binary files are detected and left untouched.
+* text=auto eol=lf

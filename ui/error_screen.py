@@ -8,7 +8,7 @@ decisions D-031, D-032).
     └─────────────┘     │ Read: README › section     │
                         ╰────────────────────────────╯
 
-Below 640 px the bubble moves under Octi (`assets/styles.css`).
+Below 900 px the bubble moves under Octi (`assets/styles.css`).
 
 Every message is built here from facts: the variable names of the settings error, and the status
 fields of the index check. The index `reason` text is never shown, so even a reason that wrongly
