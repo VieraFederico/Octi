@@ -1,15 +1,17 @@
 # Spec 02 — Analyst agent
 
-- **Version:** 0.2
+- **Version:** 0.3
 - **Last updated:** 2026-10-11
-- **Status:** Draft (awaiting `/review-spec`)
+- **Status:** Reviewed (`/review-spec` round 2: READY) — next `/write-spec-plan`
 - **Owner:** Federico Viera
 - **Parents:** `specs/00-foundation-frozen.md` (spec 00 capsule) and `specs/01-ingestion.md` (v0.7;
   its §7 interfaces are the contract this spec consumes). Parent identifiers are cited, never
   renumbered; this spec uses the 2xx range (FR-201, BR-201, NFR-201, VC-201, A-201, OQ-201).
-- **Changelog:** v0.2 — OQ-201 resolved (D-103): answers in the question's language, search phrases
+- **Changelog:** v0.3 — `/review-spec` round 1 fixes (D-104): empty library is a normal answer
+  (FR-202), catalog reload (FR-246), readable sandbox folder (FR-217), `select` size caps (FR-209,
+  NFR-205), wording of FR-201, FR-203, FR-212, FR-236, A-206. v0.2 — OQ-201 resolved (D-103): answers in the question's language, search phrases
   in English (FR-204, FR-227); `docker==7.1.0` pinned (A-201). v0.1 — first draft from the spec 02 discovery (D-085 … D-101).
-- **Decisions:** root `DECISIONS.md` D-085 … D-101, D-103 (plus D-094 / D-095, which also amended spec 01).
+- **Decisions:** root `DECISIONS.md` D-085 … D-101, D-103, D-104 (plus D-094 / D-095, which also amended spec 01).
   Spec-local decisions made during planning and implementation go to
   `specs/02-analyst-plan-artifacts/DECISIONS.md` as `S02-D-NNN` (D-004).
 - **Glossary:** `CONTEXT.md` (Analysis run, Question part, Candidate table, Selected table, Answer
@@ -73,14 +75,18 @@ requirements on isolated execution and on answerability).
 - **FR-201 (Must)** — Given the user submits text in the composer, When it is sent, Then an Analysis
   run starts for it and its message replaces spec 00's placeholder reply (FR-022). With a PDF in
   the same message, the Ingestion run happens first and the Analysis run follows it (spec 01
-  FR-104). One run at a time: while it streams the composer and the sidebar buttons are disabled
-  (as spec 01 FR-161).
-- **FR-202 (Must)** — Given the catalog holds no Table, When a question is sent, Then no LLM call is
-  made and the answer is "There are no tables in the library yet. Attach a PDF with +." with status
-  `cannot_answer` (D-094).
+  FR-104); when that ingestion is cancelled or fails, the question still runs against the current
+  catalog (D-104). One run at a time: while it streams the composer and the sidebar buttons are
+  disabled (as spec 01 FR-161).
+- **FR-202 (Must)** — Given the catalog is loaded and holds no Table, When a question is sent, Then a
+  no-LLM node answers "There are no tables in the library yet. Attach a PDF with +." with status
+  `cannot_answer`; it is a normal answer (badge and text), not the error box (D-094, D-104).
+- **FR-246 (Must)** — Given the catalog is not loaded (spec 01 FR-163), When a question is sent, Then
+  the catalog is loaded again before the empty-library check; if that fails, the run goes to `fail`
+  with kind `vector_store` (FR-230) (D-104).
 - **FR-203 (Must)** — Given earlier turns in the conversation, Then the `understand` node receives
-  the last 4 turns (each the user's question and the answer's text only; no tables, code or values);
-  New chat empties them (D-097).
+  the last 4 turns (a turn = one question and its Analysis answer text; ingestion messages are not
+  turns; no tables, code or values); New chat empties them (D-097, D-104).
 
 ### Understanding (`understand`)
 - **FR-204 (Must)** — `understand` makes one LLM call with `LLM_MODEL` and structured output
@@ -104,7 +110,10 @@ requirements on isolated execution and on answerability).
 ### Selecting (`select`)
 - **FR-209 (Must)** — `select` makes one LLM call with structured output `TableSelection` (§7) whose
   input is the standalone question, the Question parts and, per Candidate table, its `table_id`,
-  name, description, `columns_info`, row headers, Document, pages and Table preview (D-088).
+  name, description, `columns_info`, row headers, Document, pages and Table preview (D-088). Each
+  candidate block is capped at 3,500 characters: name and description; at most the first 40
+  columns as `name (unit, dtype)` with their descriptions cut to 60 characters; the first 20 row
+  headers; the stored preview (D-104).
 - **FR-210 (Must)** — The output has one entry per Question part: `table_ids`, a `verdict`
   (`answerable`, `missing_data` or `ambiguous`) and `missing` (what is missing and what the related
   Table does contain), required unless the verdict is `answerable` (D-088).
@@ -113,8 +122,9 @@ requirements on isolated execution and on answerability).
   table holds) and an ambiguous column (`ambiguous`, naming both columns) (D-098).
 - **FR-212 (Must)** — Code checks the selection: every `table_id` is a Candidate table, there is
   exactly one entry per Question part, and `missing` is not empty when required. A failing selection
-  gets one retry with one feedback sentence per problem; a second failure ends the run as
-  `cannot_answer` with "I couldn't decide which tables to use." (D-088).
+  gets one retry with one feedback sentence per problem; after a second failure every Question part
+  is missing with the reason "I couldn't decide which tables to use.", the run goes to
+  `merge_status` (status `cannot_answer`) and `respond` writes the answer (D-088, D-104).
 - **FR-213 (Must)** — Given no Question part is `answerable`, Then the run goes to `merge_status`
   without generating or running code (D-088).
 
@@ -134,7 +144,8 @@ requirements on isolated execution and on answerability).
 ### Executing (`execute`)
 - **FR-217 (Must)** — `execute` writes `main.py` = Octi's trusted prelude (§7) followed by the
   generated code, and copies only the Selected tables' Parquet files (spec 01 `read_table` storage)
-  into a new temporary folder, which is mounted read-only at `/work` (D-086).
+  into a new temporary folder, which is mounted read-only at `/work`. The folder is readable by the
+  container user (folder mode 0755, files 0644) (D-086, D-104).
 - **FR-218 (Must)** — The container runs from image `octi-sandbox:1` with: no network; a read-only
   root filesystem with a 64 MB `/tmp`; 512 MB of memory and no extra swap; 1 CPU; at most 64
   processes; all capabilities dropped; no new privileges; user 10001; no environment variables from
@@ -215,7 +226,8 @@ requirements on isolated execution and on answerability).
   attempt's code and failure) (D-096).
 - **FR-236 (Must)** — Given the run ended at selection (no code ran), Then the message shows the badge,
   the text, the "Missing:" lines and **Tables considered** (the Candidate tables named in the
-  selection), and no Code, Output or Attempts sections (D-096).
+  selection; when none is named, the 3 best Candidate tables), and no Code, Output or Attempts
+  sections (D-096, D-104).
 - **FR-237 (Must)** — Given the run ended in `fail`, Then the message shows the error box of FR-230
   instead of the badge and sections (D-094).
 - **FR-238 (Must)** — The whole message stays in the conversation history and is redrawn on every
@@ -291,8 +303,8 @@ requirements on isolated execution and on answerability).
   with the image already built (measured once by the student).
 - **NFR-203 (Performance)** — The offline suite stays under 60 s (spec 01 NFR-103).
 - **NFR-204 (Offline)** — The default test run opens zero network connections and needs no Docker.
-- **NFR-205 (Cost)** — The `select` prompt with 10 Candidate tables totals at most 24,000
-  characters (measured offline, as spec 01 NFR-104).
+- **NFR-205 (Cost)** — The `select` prompt with 10 Candidate tables at their maximum size totals at
+  most 40,000 characters (measured offline, as spec 01 NFR-104; D-104).
 - **NFR-206 (UI)** — Analysis messages render without horizontal page scroll at 1280×800 and 375 px;
   code and wide tables scroll inside their own boxes.
 
@@ -359,15 +371,18 @@ class FinalAnswer(BaseModel):        # respond's structured output
 `question`, `window` (≤ 4 turns), `plan` (`QueryPlan`), `candidates` (≤ 10 `CatalogEntry`),
 `selection` (`TableSelection`), `selection_attempts`, `code_attempts`, `last_failure`,
 `attempts_history` (every attempt: code, stdout, stderr, exit code, failure kind), `part_outcomes`,
-`answer_status`, `answer` (`FinalAnswer` text), `error` (`kind`, safe message) or none. No
-DataFrame (BR-208).
+`answer_status`, `answer` (`FinalAnswer` text), `error` (`kind`: `llm` / `vector_store` / `sandbox`,
+safe message) or none. No DataFrame (BR-208).
 
 ### Analyst graph (D-100)
 
 ```mermaid
 flowchart TD
-    START([Question]) --> empty{Library empty?}
-    empty -- yes --> fail
+    START([Question]) --> loaded{Catalog loaded?<br/>reload once}
+    loaded -- "still not loaded" --> fail
+    loaded -- yes --> empty{Library empty?}
+    empty -- yes --> no_tables["no-tables answer<br/>no LLM: cannot_answer"]
+    no_tables --> END
     empty -- no --> understand
     understand["understand<br/>LLM: window → standalone question, parts, phrases"] --> retrieve
     retrieve["retrieve<br/>no LLM: top 5 per phrase, max 10"] --> select
@@ -393,7 +408,7 @@ flowchart TD
     classDef sandbox fill:#fab387,color:#1e1e2e,stroke:#fab387
     classDef bad fill:#f38ba8,color:#1e1e2e,stroke:#f38ba8
     class understand,select,generate_code,respond llm
-    class retrieve,check,merge_status,template,empty code
+    class retrieve,check,merge_status,template,empty,loaded,no_tables code
     class execute sandbox
     class fail bad
 ```
@@ -455,16 +470,22 @@ A timeout or a failing script is an attempt outcome, not an error.
 - Output cap: 64 KB each for stdout and stderr; stderr tail in feedback: 2,000 characters.
 - Container: 512 MB, 1 CPU, 64 processes, 64 MB `/tmp`, user 10001, image tag `octi-sandbox:1`.
 - Selection retries: 1. Number-check retries: 1. Answer length: 2–6 sentences.
+- `select` caps: 3,500 characters per candidate, 40 columns, 60-character column descriptions, 20 row
+  headers. Sandbox folder modes: 0755 / 0644. Fallback folder: `data/sandbox_runs/` (git-ignored).
 
 ## 8. Verification Criteria
 
 Starting a run (AppTest with a stub runner)
 - VC-201 (FR-201): send "hello" → an Analysis run starts and its message replaces the old spec-02
-  placeholder; while it streams the composer and sidebar buttons are disabled.
-- VC-202 (FR-202): empty catalog → the FR-202 sentence, status `cannot_answer`, the stub LLM records
-  zero calls.
-- VC-203 (FR-203): 6 earlier turns → `understand` receives the last 4, each with question and answer
-  text only; after New chat it receives none.
+  placeholder; while it streams the composer and sidebar buttons are disabled; text plus a PDF whose
+  ingestion is cancelled → the Analysis run still starts.
+- VC-202 (FR-202): empty catalog → the FR-202 sentence as a normal answer (badge, no error box),
+  status `cannot_answer`, `error` none, the stub LLM records zero calls.
+- VC-248 (FR-246): catalog not loaded and Pinecone still failing → `fail` with kind `vector_store` and
+  the generic message, not the no-tables answer; Pinecone recovered → the catalog loads and the run
+  continues.
+- VC-203 (FR-203): 6 earlier Analysis turns and 2 ingestion messages → `understand` receives the last
+  4 Analysis turns, each with question and answer text only; after New chat it receives none.
 
 Understanding and retrieval (scripted stub LLM, fake Pinecone)
 - VC-204 (FR-204, BR-212): the stub records `LLM_MODEL` and structured output `QueryPlan`, even when
@@ -484,7 +505,8 @@ Selection
 - VC-210 (FR-211): the `select` prompt contains §7's rules block verbatim and the two few-shot pairs.
 - VC-211 (FR-212, BR-209): a stub answer with an unknown id, a missing part and an empty `missing` →
   one retry carrying three feedback sentences; a second invalid answer → `cannot_answer` with "I
-  couldn't decide which tables to use."
+  couldn't decide which tables to use." as every part's reason, status `cannot_answer`, and `respond`
+  called with those facts.
 - VC-212 (FR-213): all parts `missing_data` → no `generate_code` call, no sandbox run, status
   `cannot_answer`.
 
@@ -494,7 +516,8 @@ Code generation, execution, retries (stub sandbox runner unless marked live)
 - VC-214 (FR-216): the third attempt's prompt contains attempt 2's code and feedback and not attempt
   1's.
 - VC-215 (FR-217, BR-205): the temporary folder handed to the runner holds exactly the Selected
-  tables' Parquet files and `main.py`, and `main.py` starts with the prelude.
+  tables' Parquet files and `main.py`, `main.py` starts with the prelude, the folder's mode is 0755
+  and every file's mode is 0644.
 - VC-216 (FR-218, BR-204, BR-205): the container settings passed to the Docker SDK (inspected on a
   fake client) match §7 exactly, including an empty environment.
 - VC-217 (FR-219, FR-221): a runner reporting a timeout → feedback names N seconds; the container is
@@ -538,7 +561,8 @@ UI (AppTest with a stub runner)
 - VC-232 (FR-235): an answered run → badge, text, then the four folded sections in order; opening
   **Show data** reads the Table store once; before that, zero reads.
 - VC-233 (FR-236): a run ended at selection → badge, text, "Missing:" lines, **Tables considered**;
-  no Code, Output or Attempts sections.
+  no Code, Output or Attempts sections; a selection naming no table → the 3 best Candidate tables
+  listed.
 - VC-234 (FR-237): a run ended in `fail` → the error box and no badge or sections.
 - VC-235 (FR-238): after the run, send another question → the first message is still in the
   history.
@@ -565,7 +589,8 @@ Image, docs, tests
 - VC-245 (FR-245, BR-204, BR-205): `pytest -m live` (by the student, image built) → the normal run
   succeeds; the secrets-file read, the network call, the endless loop and the fork bomb are each
   stopped; the ACME question ends `answered` with a numeric value and the expected `table_id`.
-- VC-246 (NFR-205): the `select` prompt for 10 candidate tables totals at most 24,000 characters.
+- VC-246 (NFR-205): 10 candidate tables at their maximum metadata size → each block ≤ 3,500
+  characters and the whole `select` prompt ≤ 40,000 characters.
 - VC-247 (NFR-201, NFR-202, NFR-206): manual check by the student: a one-table ACME question answers
   in under 60 s; a trivial container run finishes in under 3 s; no horizontal page scroll at
   1280×800 and 375 px.
@@ -584,5 +609,8 @@ None (OQ-201 resolved by D-103).
   memory and swap limits, CPU, pids limit, capabilities, security options, user, volumes).
 - **A-204** — LangSmith accepts metadata added to a run when it ends (FR-239); if not, the end
   metadata is attached to the final node's span and the plan records it as an S02-D decision.
+- **A-206** — Docker can mount the system temporary folder (default file sharing in Docker Desktop on
+  macOS and with WSL integration); where it cannot, the folder is created under the git-ignored
+  `data/sandbox_runs/` instead (D-104).
 - **A-205** — Spec 01's §7 interfaces (v0.7) hold when spec 02 is implemented; any change made
   during spec 01's implementation is logged as an S01-D entry and folded in here.
