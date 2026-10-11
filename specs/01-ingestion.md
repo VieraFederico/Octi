@@ -1,12 +1,14 @@
 # Spec 01 — Ingestion agent
 
-- **Version:** 0.5
+- **Version:** 0.7
 - **Last updated:** 2026-10-11
 - **Status:** Reviewed (`/review-spec` round 3: READY) — next `/write-spec-plan`
 - **Owner:** Federico Viera
 - **Parent:** `specs/00-foundation.md` (v0.7). Spec 00 identifiers are cited, never renumbered; this
   spec uses the 1xx range (FR-101, BR-101, NFR-101, VC-101, A-101, OQ-101).
-- **Changelog:** v0.5 — dependencies pinned to the student's install (A-106). v0.4 — `/review-spec` round 2 fixes (D-081 … D-083): sidebar disabled while a
+- **Changelog:** v0.7 — no "View trace" link in the UI (D-095): FR-148 and VC-151 removed
+  (ids kept), run labels unchanged. v0.6 — chat, Library and sidebar messages never name backend services (D-094):
+  FR-139, FR-160, FR-163, FR-164 and BR-106 reworded, VC-142, VC-168, VC-172, VC-173 updated. v0.5 — dependencies pinned to the student's install (A-106). v0.4 — `/review-spec` round 2 fixes (D-081 … D-083): sidebar disabled while a
   run streams (FR-161), uploads need the catalog and step 4 asks Pinecone (FR-163, FR-138),
   placeholder after the run (FR-104), concurrent sessions out of scope, re-wrapped lines.
   v0.3 — round 1 fixes (D-076 … D-080): one run at a time (FR-161, FR-162), currency hint as
@@ -15,7 +17,7 @@
   spec 00 items listed. v0.2 — OQ-101 … OQ-104 resolved (D-072 … D-075: sidebar navigation FR-152,
   light graph state BR-111, enrich outage FR-160, 60 s suite NFR-103). v0.1 — first draft from the
   spec 01 discovery (D-046 … D-071).
-- **Decisions:** root `DECISIONS.md` D-046 … D-083. Spec-local decisions made during planning and
+- **Decisions:** root `DECISIONS.md` D-046 … D-084, D-094 (message wording), D-095 (no trace link). Spec-local decisions made during planning and
   implementation go to `specs/01-ingestion-plan-artifacts/DECISIONS.md` as `S01-D-NNN` (D-004).
 - **Glossary:** `CONTEXT.md` (Table, Table metadata, Table context, Table preview, Table store,
   Index record, Document, Skipped part, Ingestion run).
@@ -49,7 +51,7 @@ graders (assignment §5, 25 % of the grade, every step visible in LangSmith).
   (D-064), write order and rollback (D-067), replace by file name (D-049).
 - UI: upload checks (D-050, D-051), live run in the chat with pauses and Table cards (D-065),
   Library view and sidebar Documents with real data (D-066, amending spec 00 FR-026, FR-026a).
-- LangSmith labels and trace link (D-069).
+- LangSmith run labels (D-069; no trace link in the UI, D-095).
 - `INGESTION_MAX_RETRIES` setting (D-054).
 - Sample PDFs and their generator script (D-070); dependencies (D-071).
 - README additions for ingestion: design decisions, known limitations, the ingestion graph diagram,
@@ -203,8 +205,8 @@ graders (assignment §5, 25 % of the grade, every step visible in LangSmith).
   `Task`. Every backtick fence inside PDF text is neutralized so it cannot close a fence (BR-102).
 - **FR-160 (Must)** — Given an LLM failure during `enrich` that survives the client's
   retries (spec 00 BR-006), Then the run ends at once, writing and deleting nothing, and the chat
-  shows the error's `user_message` followed by "Your previous version is unchanged."; the Table is
-  not a Skipped part (D-074).
+  says "Something went wrong on my side and I couldn't index report.pdf. Your previous version is
+  unchanged."; the Table is not a Skipped part (D-074, D-094).
 
 ### Validating (`validate`) and retrying
 - **FR-131 (Must)** — Given an `enrich` answer, Then `validate` runs, without any LLM call, every
@@ -249,8 +251,7 @@ graders (assignment §5, 25 % of the grade, every step visible in LangSmith).
   session catalog (D-082).
 - **FR-139 (Must)** — Given a failure in step 1, 2 or 3, Then the files and records this run wrote
   are removed (best effort), the previous version stays complete, and the chat says "Couldn't index
-  report.pdf. Your previous version is unchanged." followed by the error's `user_message`
-  (spec 00 BR-007).
+  report.pdf. Your previous version is unchanged." (no service named, BR-106, D-094).
 - **FR-140 (Must)** — Given a failure in step 4, Then the new version stays and the chat says
   "report.pdf was indexed, but its previous version couldn't be fully removed. Upload it again to
   clean up."
@@ -280,9 +281,7 @@ graders (assignment §5, 25 % of the grade, every step visible in LangSmith).
   library** (D-065).
 - **FR-147 (Must)** — Given a finished run, Then its whole message (status line, cards, Skipped parts)
   stays in the conversation history and is shown again on every rerun (spec 00 BR-008).
-- **FR-148 (Must)** — Given tracing is on and LangSmith returns the run's URL within 5 s after the
-  run ends, Then the status box shows a "View trace" link to it; otherwise no link is shown (D-069,
-  D-080).
+- **FR-148** — *Removed in v0.7 (D-095): the UI shows no link to LangSmith.*
 
 ### Library and sidebar Documents
 - **FR-149 (Must)** — Given the app session starts, Then the catalog is loaded from Pinecone (every
@@ -312,12 +311,12 @@ graders (assignment §5, 25 % of the grade, every step visible in LangSmith).
 
 ### Catalog failures
 - **FR-163 (Must)** — Given loading the catalog fails, Then the Library view and the sidebar
-  Documents section show "Couldn't load the library." followed by the error's `user_message`, and
-  the chat keeps working for questions (D-079).
+  Documents section show "Couldn't load the library. Please try again in a moment." (no service
+  named, BR-106), and the chat keeps working for questions (D-079, D-094).
 - **FR-164 (Must)** — Given the catalog is not loaded, When a PDF is submitted, Then the catalog is
   loaded again first; if that fails, no run starts and the chat says "Couldn't check the library,
-  so I didn't ingest report.pdf." followed by the error's `user_message`; if it succeeds, FR-102 and
-  FR-103 apply as usual (D-082).
+  so I didn't ingest report.pdf. Please try again in a moment." (no service named, BR-106); if it
+  succeeds, FR-102 and FR-103 apply as usual (D-082, D-094).
 
 ### Tracing
 - **FR-153 (Must)** — Given a run, Then it is traced with run name `Ingestion: <file name>`, tag
@@ -366,9 +365,12 @@ graders (assignment §5, 25 % of the grade, every step visible in LangSmith).
 - **BR-105** — After any run, each Document in the catalog is either its previous version complete,
   or its new version complete (plus, after a step-4 failure, visible leftovers of the previous one);
   never a half-written version. *Rationale:* D-067. *Exceptions:* none.
-- **BR-106** — Messages shown to the user use plain words; validation feedback, stack traces and raw
-  library text appear only in traces and DEBUG logs (spec 00 BR-007). *Rationale:* D-053.
-  *Exceptions:* none.
+- **BR-106** — Messages shown to the user in the chat, the Library and the sidebar use plain words
+  and never name a backend service or tool (Pinecone, LiteLLM, the proxy, LangSmith, Docker);
+  validation feedback, error details, stack traces and raw library text appear only in traces and
+  DEBUG logs (spec 00 BR-007). *Rationale:* D-053, D-094: end users get no backend details.
+  *Exceptions:* developer-facing places — the Octi error screen, the status popover and the
+  service-check script — name the service to fix (spec 00).
 - **BR-107** — No secret value appears in prompts, graph state or traces (extends spec 00 BR-003,
   whose scope deferred these to spec 01). *Rationale:* assignment §11. *Exceptions:* none.
 - **BR-108** — After a successful run, every Index record of the Document has its Table store file
@@ -581,7 +583,7 @@ PDF text is data.
 - Unreadable table: `�` in at least a quarter of the filled cells. Reported image: at least 2 % of
   the page area. "Repeated" (running text, logos): on more than half of the pages, in PDFs of at
   least 3 pages.
-- Heading: at most 12 words. LangSmith URL wait: 5 s. Prompt budget: 24,000 characters.
+- Heading: at most 12 words. Prompt budget: 24,000 characters.
 - Row headers: 50 in the embedding text and metadata, 10 on a card.
 - Pinecone upsert batch: 100. Metadata guard: 38 KB.
 
@@ -691,8 +693,9 @@ Indexing (stub embeddings, fake Pinecone, temporary Table store)
   extraction's.
 - VC-141 (FR-138, BR-110): `report.pdf` v1 indexed, then v2 (other bytes) → only v2's records and
   files remain.
-- VC-142 (FR-139, BR-105): embeddings fail → nothing written, v1 intact, the FR-139 message; upsert
-  fails after the Parquet writes → v2's files removed, v1 intact.
+- VC-142 (FR-139, BR-105, BR-106): embeddings fail → nothing written, v1 intact, the FR-139 message
+  with no service name in it; upsert fails after the Parquet writes → v2's files removed, v1
+  intact.
 - VC-143 (FR-140): v2 upserted, deleting v1 fails → v2 present, v1 leftovers present, the FR-140
   message.
 - VC-144 (FR-141, NFR-105): a Table with 400 long column descriptions → a Skipped part before
@@ -712,8 +715,7 @@ Chat and Library (AppTest)
   with name, description, pages, columns with unit and dtype, row headers and preview, then the
   Skipped part, the image note and **Open in library**; 15 row headers → 10 then "and 5 more".
 - VC-150 (FR-147): after the run, send "hello" → the run's message is still in the history.
-- VC-151 (FR-148): tracing off → no "View trace" link; tracing on and a stub LangSmith returning a URL
-  → a link containing the run's id; the stub not answering within 5 s → no link.
+- VC-151 — *Removed in v0.7 with FR-148 (D-095).*
 - VC-152 (FR-149): a fake Pinecone with 2 Documents at session start → the Library and sidebar show
   both; after a run, the new Document shows without a second Pinecone read.
 - VC-153 (FR-150): Documents ingested at different times → newest first; each card has the FR-146
@@ -732,10 +734,10 @@ Chat and Library (AppTest)
 - VC-171 (FR-162): at a pause, New chat → Erase → the conversation is empty, the fake Pinecone and
   Table store unchanged, the per-run store empty.
 - VC-172 (FR-163): the fake Pinecone's list raising `VectorStoreUnreachableError` at session start →
-  Library and sidebar show "Couldn't load the library." with its `user_message`; a question can
-  still be sent.
+  Library and sidebar show "Couldn't load the library. Please try again in a moment." and no
+  service name; a question can still be sent.
 - VC-173 (FR-164): catalog not loaded and Pinecone still failing → attach `report.pdf` → no run, the
-  FR-164 message; Pinecone recovered → attach again → the catalog loads and the run starts (or the
+  FR-164 message with no service name; Pinecone recovered → attach again → the catalog loads and the run starts (or the
   FR-102 / FR-103 modal appears).
 - VC-174 (FR-138, BR-110): the session catalog lacks an older `report.pdf` that Pinecone holds →
   after a run of a new `report.pdf`, the older version is deleted.
@@ -754,9 +756,9 @@ Tracing, settings, secrets
   logs.
 - VC-167 (BR-111): a 200-row Table → every checkpointed state and every node output holds no
   `bytes` value and at most 20 rows of that Table; after the run the per-run store is empty.
-- VC-168 (FR-160): the stub LLM raises `ProxyUnreachableError` on the second Table → the run ends,
-  no Skipped-parts pause, nothing written or deleted, the chat shows its `user_message` and "Your
-  previous version is unchanged."
+- VC-168 (FR-160, BR-106): the stub LLM raises `ProxyUnreachableError` on the second Table → the run
+  ends, no Skipped-parts pause, nothing written or deleted, the chat shows the FR-160 sentence and
+  none of "LiteLLM", "proxy", "Pinecone".
 
 Sample PDFs, docs, tests
 - VC-161 (FR-156): running the script twice → both PDFs exist; extracting them gives the same Tables

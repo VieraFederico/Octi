@@ -33,8 +33,8 @@ Deleted: none.
 ## Decisions
 S01-D-001 (Story HTML fixtures; A-102 holds), S01-D-002 (non-PDF content is unreadable),
 S01-D-003 (images identified by content hash), S01-D-004 (document leaves carry their sentence),
-S01-D-005 (no-text test and image-note scope). S01-D-002, -003 and -004 are flagged for the
-student's confirmation.
+S01-D-005 (no-text test and image-note scope). S01-D-002, -003 and -004 were flagged for the
+student's confirmation and accepted (2026-10-11, after commit `08a5171`).
 
 ## Deviations
 - `open_document` also refuses content MuPDF opens but that is not a PDF (a renamed PNG), with the

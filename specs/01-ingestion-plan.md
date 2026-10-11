@@ -7,7 +7,7 @@
 - **Artifact directory:** `ROOT/specs/01-ingestion-plan-artifacts/` — every iteration reads it first
   and updates it last.
 - **Documentation space:** `ROOT/README.md` (no `docs/` tree; D-043 makes the README the product
-  document). Only the final iteration (11) edits the README.
+  document). Only the final iteration (7) edits the README.
 - **Project rules that override generic plan habits (CLAUDE.md, CLAUDE.local.md):**
   - **Claude never commits.** Each iteration ends with its changes ready and the student reviewing;
     **the student makes the commit**. The iteration record leaves `Commit SHA: (filled by student)`;
@@ -33,6 +33,11 @@
   describes them with the LLM under a deterministic validation loop, and writes Parquet files plus
   Pinecone Index records in a safe order; then the chat experience that runs it (live status, two
   pauses, Table cards) and the Library and sidebar that show the catalog.
+
+**Plan revision (D-102, 2026-10-11):** the original Iterations 3–11 were merged into 3–7 (3+4, 5+6, 7+8,
+9+10, 11) to cut per-iteration overhead; each merged iteration keeps both parts' scope and criteria
+("Part 1" / "Part 2"). TDD stays inside every iteration; the live and manual checks all run in
+Iteration 7. Iterations 1–2 are unchanged.
 
 Throughout this plan, `ROOT` means the project root, `SPEC` means `ROOT/specs/01-ingestion.md`, and
 `ARTIFACTS` means `ROOT/specs/01-ingestion-plan-artifacts`. The Python interpreter is
@@ -78,7 +83,7 @@ gotchas, **For the next iteration**).
 3. **One commit per iteration, made by the student** — artifacts included.
 4. **Artifacts every iteration** — read first, update last; stale artifacts = iteration not done.
 5. **Self-contained** — executable from the spec, this plan and the artifacts alone.
-6. **Shipped docs in the final iteration** — the README changes of SPEC FR-157 land in Iteration 11.
+6. **Shipped docs in the final iteration** — the README changes of SPEC FR-157 land in Iteration 7.
 7. **No orphaned state** — if stopped mid-way, the suite still passes and the app still starts.
 
 ## Proposed file map (the student approves it by reviewing this plan)
@@ -167,7 +172,7 @@ proven by tests, and Octi can open a PDF and report unreadable files, no-text pa
 - A-101 and A-102 proven by `tests/unit/test_pymupdf_assumptions.py`.
 - VC-105, VC-106, VC-107 (function level): `tests/unit/test_document.py` — bytes `not a pdf`, an
   encrypted fixture, an image-only PDF raise the matching leaf with the exact sentence. (The graph-
-  level "zero calls, nothing written" part is checked in Iteration 7.)
+  level "zero calls, nothing written" part is checked in Iteration 5.)
 - VC-123 (page part): a 4-page fixture with pages 2–3 image-only → `pages_without_text` = [2, 3].
 - VC-125 and VC-169 (image part): a large image on page 5 plus a small logo on every page → only
   page 5 reported; a 1-page PDF with one large image → its page reported.
@@ -220,17 +225,21 @@ returned, how a header grid is passed in), the DataFrame builder's name.
 
 ---
 
-## Iteration 3: Extracting Tables from PDFs, and the sample PDFs
+## Iteration 3: Extracting Tables from PDFs, and the sample PDFs + Table context
 
 **Goal**: Octi turns a PDF into a list of extracted Tables — joined across pages, with header rows
 detected, fake tables dropped, unreadable tables flagged and stable `table_id`s — and the two sample
-PDFs exist and extract as intended.
+PDFs exist and extract as intended. Each extracted Table gets its Table context — section, caption, before, after, footnotes —
+chosen by position and font, within the size limits.
 
 **Reads**: Artifact Protocol steps 1–5; SPEC FR-109 … FR-113 (step 1), FR-119 (table part),
 FR-122, FR-156, §7 "`table_id`", "Code constants"; `ROOT/DECISIONS.md` D-048, D-060, D-061, D-070;
 `ROOT/playground/15-pdf/make_sample_pdf.py` and `ROOT/playground/15-pdf/pdf_tables.py`.
+For part 2: Artifact Protocol steps 1–5; SPEC FR-123 … FR-126, FR-124's 3-page rule, §7 "Code
+constants"; `ROOT/DECISIONS.md` D-058, D-080; `ROOT/CONTEXT.md` (term "Table context").
 
 **Scope**:
+*Part 1 — Extracting Tables from PDFs, and the sample PDFs:*
 - `agents/ingestion/schemas.py` (first part): an `ExtractedTable` data class (table_id, pages, parts'
   boxes, header names, DataFrame, hints, row headers, unreadable flag) — plain data, documented.
 - `agents/ingestion/pdf/tables.py`:
@@ -252,34 +261,8 @@ FR-122, FR-156, §7 "`table_id`", "Code constants"; `ROOT/DECISIONS.md` D-048, D
   two-row merged header, footnotes, a two-column page, one embedded image; Informe: Spanish,
   `1.234,5`, section titles, `Cuadro N` captions, one entity shared with ACME for spec 03's
   multi-Table questions). Deterministic output. Add `data/tables/` to `.gitignore` (Edit tool).
-- Artifacts: `CONTEXT.md`; record `iterations/03-extraction.md`; S01-D entries for any threshold
   detail you had to fix (e.g. how "bold" is read from font flags).
-
-**Success criteria** (command: `.venv/bin/python -m pytest -q tests/unit/test_tables.py tests/unit/test_sample_pdfs.py`, then the full suite):
-- VC-108, VC-109, VC-110, VC-111, VC-113 (fixture PDFs from `tests/pdf_fixtures.py`).
-- VC-112 and VC-114 at PDF level (merged-header fixture; empty-cell fixture).
-- VC-116: four candidate header rows → at most 3; an all-header-looking table keeps 1 data row.
-- VC-123 (table part): a mostly-`�` table is flagged unreadable and has no DataFrame.
-- VC-161: running the script twice gives both PDFs; extracting them gives the same column names,
-  row counts and pages both times; ACME has a multi-page Table and a merged-cell header.
-- Full suite green; record complete.
-
-**Hands off**: `extract_tables` signature and `ExtractedTable` fields; the sample PDFs' Tables (names
-of columns, pages) listed in `CONTEXT.md` so later iterations and the live test can assert on them.
-
-**Commit message**: `Extract tables from PDFs and add the sample PDFs`
-
----
-
-## Iteration 4: Table context
-
-**Goal**: Each extracted Table gets its Table context — section, caption, before, after, footnotes —
-chosen by position and font, within the size limits.
-
-**Reads**: Artifact Protocol steps 1–5; SPEC FR-123 … FR-126, FR-124's 3-page rule, §7 "Code
-constants"; `ROOT/DECISIONS.md` D-058, D-080; `ROOT/CONTEXT.md` (term "Table context").
-
-**Scope**:
+*Part 2 — Table context:*
 - `agents/ingestion/schemas.py`: a `TableContext` data class with the five fields.
 - `agents/ingestion/pdf/context.py`: `collect_context(doc, table)` per FR-123 (heading = ≤ 12 words, bold
   or larger than the page's most common font size, searching back to earlier pages; caption = nearest
@@ -289,32 +272,48 @@ constants"; `ROOT/DECISIONS.md` D-058, D-080; `ROOT/CONTEXT.md` (term "Table con
   overlap ≥ half the block's width; running text repeated on more than half of the pages only in PDFs
   of ≥ 3 pages; bare page numbers; text inside the table box), FR-125 (multi-page sources), FR-126
   (≤ 2,000 characters, shortening before, then after, then footnotes).
-- Artifacts: `CONTEXT.md`; record `iterations/04-context.md`.
+- Artifacts: `CONTEXT.md` (every section this iteration changes); `DECISIONS.md` if a choice was made; record `iterations/03-extraction-and-context.md`.
 
-**Success criteria** (command: `.venv/bin/python -m pytest -q tests/unit/test_context.py`, then the full suite):
+**Success criteria**:
+*Part 1* (command: `.venv/bin/python -m pytest -q tests/unit/test_tables.py tests/unit/test_sample_pdfs.py`, then the full suite):
+- VC-108, VC-109, VC-110, VC-111, VC-113 (fixture PDFs from `tests/pdf_fixtures.py`).
+- VC-112 and VC-114 at PDF level (merged-header fixture; empty-cell fixture).
+- VC-116: four candidate header rows → at most 3; an all-header-looking table keeps 1 data row.
+- VC-123 (table part): a mostly-`�` table is flagged unreadable and has no DataFrame.
+- VC-161: running the script twice gives both PDFs; extracting them gives the same column names,
+  row counts and pages both times; ACME has a multi-page Table and a merged-cell header.
+*Part 2* (command: `.venv/bin/python -m pytest -q tests/unit/test_context.py`, then the full suite):
 - VC-126, VC-127, VC-128, VC-129 as written in SPEC §8, on fixture PDFs.
 - VC-169 (context part): a 1-page PDF keeps its caption and paragraph as context; a 4-page PDF with
   the same header line on every page does not count it.
 - The ACME sample's Tables each get a non-empty caption (checked in the same test file).
-- Full suite green; record complete.
+- Full suite green (`.venv/bin/python -m pytest -q`); the record lists every criterion with its command.
 
-**Hands off**: `collect_context` signature, `TableContext` fields, any heuristic constant you added.
+**Hands off**: `extract_tables` signature and `ExtractedTable` fields; the sample PDFs' Tables (names
+of columns, pages) listed in `CONTEXT.md` so later iterations and the live test can assert on them.
+`collect_context` signature, `TableContext` fields, any heuristic constant you added.
 
-**Commit message**: `Collect the Table context of each table`
+**Commit message**: `Extract tables from PDFs and add the sample PDFs and Collect the Table context of each table`
 
 ---
 
-## Iteration 5: Prompt, validation and records
+## Iteration 4: Prompt, validation and records + Table store, Pinecone writes and the safe write order
 
 **Goal**: The pure pieces around the LLM exist: the SPEC §7 models, prompt v1 with its two examples
 and the human-message builder, the five validation checks, metadata assembly with the size guard,
-the embedding text, the preview and the Index record.
+the embedding text, the preview and the Index record. Octi can write, read and delete Tables in the Parquet store, list and change Index records
+in Pinecone, and perform `index`'s four steps in the safe order with rollback.
 
 **Reads**: Artifact Protocol steps 1–5; SPEC FR-127 … FR-133, FR-136, FR-137, FR-141, BR-101,
 BR-102, NFR-104, §7 "Pydantic models", "Index record", "Prompt v1", "Code constants",
 "Catalog interface"; `ROOT/DECISIONS.md` D-062 … D-064, D-068, D-077, D-078, D-080.
+For part 2: Artifact Protocol steps 1–5; SPEC FR-138 … FR-140, FR-149 (data part), BR-104, BR-105,
+BR-108, BR-110, §7 "Table store", "Catalog interface", A-103; `ROOT/DECISIONS.md` D-047, D-049,
+D-067, D-082; `ROOT/services/vector_store.py` (client factory and `_translate_pinecone_errors`);
+`ROOT/tests/stubs.py`.
 
 **Scope**:
+*Part 1 — Prompt, validation and records:*
 - `agents/ingestion/schemas.py`: `ColumnDescription`, `TableEnrichment`, `ColumnMetadata`,
   `TableMetadata`, `CatalogEntry` exactly as SPEC §7, every field with `Field(description=...)`; the
   limits (80 / 600 / 40 characters) as `max_length`.
@@ -325,42 +324,12 @@ BR-102, NFR-104, §7 "Pydantic models", "Index record", "Prompt v1", "Code const
   total, retry sections) with backtick fences inside PDF text neutralized (BR-102).
 - `agents/ingestion/validation.py`: `validate(enrichment_or_raw, table)` → list of feedback sentences
   for FR-131's five checks (empty list = valid).
-- `agents/ingestion/indexing.py` (record part; Iteration 6 adds the write order): `assemble_metadata(enrichment, table)` (FR-136, BR-101);
+- `agents/ingestion/indexing.py` (record part; part 2 of this iteration adds the write order): `assemble_metadata(enrichment, table)` (FR-136, BR-101);
   `index_metadata(metadata, table, document)` → the flat Pinecone metadata of SPEC §7 (JSON
   `columns_info`, string `pages`, `row_headers` first 50 + total, preview of 5 rows / 40-character
   cells / ≤ 2,000 characters, `ingested_at` UTC); `exceeds_size_guard(metadata)` (38 KB, FR-141);
   `embedding_text(metadata)` (FR-137); `entry_from_record(record)` → `CatalogEntry`.
-- Artifacts: `CONTEXT.md`; record `iterations/05-prompt-validation-records.md`.
-
-**Success criteria** (command: `.venv/bin/python -m pytest -q tests/unit/test_prompts.py tests/unit/test_validation.py tests/unit/test_indexing.py`, then the full suite):
-- VC-131 (message part): `build_messages` returns the system message equal to SPEC §7 prompt v1,
-  then two user/assistant pairs, then the human message; identical system message for two Tables.
-- VC-132, VC-133, VC-138, VC-139 as written in SPEC §8.
-- VC-122 (prompt part): hints appear in the Columns table.
-- VC-144 (function part): 400 long column descriptions → `exceeds_size_guard` true.
-- VC-165: the full message list for a 20-column, 20-row Table with 2,000 characters of context is
-  ≤ 24,000 characters.
-- Every few-shot assistant answer passes `validate` against its own example table.
-- Full suite green; record complete.
-
-**Hands off**: the names and signatures above; how a raw (unparseable) LLM answer reaches `validate`;
-the exact embedding-text format.
-
-**Commit message**: `Add the enrichment prompt, validation checks and Index record builders`
-
----
-
-## Iteration 6: Table store, Pinecone writes and the safe write order
-
-**Goal**: Octi can write, read and delete Tables in the Parquet store, list and change Index records
-in Pinecone, and perform `index`'s four steps in the safe order with rollback.
-
-**Reads**: Artifact Protocol steps 1–5; SPEC FR-138 … FR-140, FR-149 (data part), BR-104, BR-105,
-BR-108, BR-110, §7 "Table store", "Catalog interface", A-103; `ROOT/DECISIONS.md` D-047, D-049,
-D-067, D-082; `ROOT/services/vector_store.py` (client factory and `_translate_pinecone_errors`);
-`ROOT/tests/stubs.py`.
-
-**Scope**:
+*Part 2 — Table store, Pinecone writes and the safe write order:*
 - `services/table_store.py`: `write_table(table_id, df)`, `read_table(table_id)`,
   `delete_tables(ids)`, root folder `ROOT/data/tables` (overridable for tests), disk errors →
   `TableStoreError`; dtypes round-trip exactly.
@@ -376,34 +345,51 @@ D-067, D-082; `ROOT/services/vector_store.py` (client factory and `_translate_pi
 - `tests/stubs.py`: `FakeEmbeddings` (deterministic vectors, records calls, can fail), `FakePineconeIndex`
   (in-memory records, list/fetch/query-with-filter/upsert/delete, records call order, can fail at a
   chosen step), a temporary Table store fixture.
-- Artifacts: `CONTEXT.md`; record `iterations/06-storage.md`.
+- Artifacts: `CONTEXT.md` (every section this iteration changes); `DECISIONS.md` if a choice was made; record `iterations/04-describe-and-store.md`.
 
-**Success criteria** (command: `.venv/bin/python -m pytest -q tests/unit/test_table_store.py tests/unit/test_vector_store.py tests/unit/test_indexing.py`, then the full suite):
+**Success criteria**:
+*Part 1* (command: `.venv/bin/python -m pytest -q tests/unit/test_prompts.py tests/unit/test_validation.py tests/unit/test_indexing.py`, then the full suite):
+- VC-131 (message part): `build_messages` returns the system message equal to SPEC §7 prompt v1,
+  then two user/assistant pairs, then the human message; identical system message for two Tables.
+- VC-132, VC-133, VC-138, VC-139 as written in SPEC §8.
+- VC-122 (prompt part): hints appear in the Columns table.
+- VC-144 (function part): 400 long column descriptions → `exceeds_size_guard` true.
+- VC-165: the full message list for a 20-column, 20-row Table with 2,000 characters of context is
+  ≤ 24,000 characters.
+- Every few-shot assistant answer passes `validate` against its own example table.
+*Part 2* (command: `.venv/bin/python -m pytest -q tests/unit/test_table_store.py tests/unit/test_vector_store.py tests/unit/test_indexing.py`, then the full suite):
 - VC-140, VC-141, VC-142, VC-143, VC-174 as written in SPEC §8.
 - VC-147 (write part): writing the same document twice leaves the same ids and record count.
 - VC-172 (data part): `load_catalog` with a failing fake raises `VectorStoreUnreachableError`.
 - `read_table` returns a DataFrame equal to the one written (dtypes included).
-- Full suite green; record complete.
+- Full suite green (`.venv/bin/python -m pytest -q`); the record lists every criterion with its command.
 
-**Hands off**: `write_document`'s inputs and result type; the fake index and embeddings' names and
+**Hands off**: the names and signatures above; how a raw (unparseable) LLM answer reaches `validate`;
+the exact embedding-text format.
+`write_document`'s inputs and result type; the fake index and embeddings' names and
 how to make them fail at a given step; the Table store fixture name.
 
-**Commit message**: `Add the Parquet Table store, Pinecone writes and the safe write order`
+**Commit message**: `Add the enrichment prompt, validation checks and Index record builders and Add the Parquet Table store, Pinecone writes and the safe write order`
 
 ---
 
-## Iteration 7: The ingestion graph (no pauses yet)
+## Iteration 5: The ingestion graph (no pauses yet) + Pauses and tracing
 
 **Goal**: A LangGraph `StateGraph` runs a whole Ingestion run end to end with stubs — load, extract,
 context, enrich/validate loop with retries, index — with a light state; Skipped parts are recorded
-but the run does not pause yet.
+but the run does not pause yet. The graph pauses for unreadable parts and for skipped Tables, resumes or cancels safely,
+and every run is traced with its labels even when the tracing variables are absent.
 
 **Reads**: Artifact Protocol steps 1–5; SPEC FR-105 … FR-108 (graph part), FR-127, FR-132, FR-133,
 FR-136, FR-141, FR-142, FR-143, FR-160, BR-103, BR-106, BR-107, BR-111, §7 "Ingestion graph";
 `ROOT/DECISIONS.md` D-052, D-054, D-073, D-074; `ROOT/playground/SENSEI_NOTES.md` (LangGraph notes,
 if present).
+For part 2: Artifact Protocol steps 1–5; SPEC FR-119, FR-120, FR-134, FR-135, FR-153, FR-154, BR-103,
+BR-109, §7 "Ingestion graph"; `ROOT/DECISIONS.md` D-053, D-061, D-069; spec 00 A-006 (in
+`ROOT/specs/00-foundation-frozen.md`, "Known limits").
 
 **Scope**:
+*Part 1 — The ingestion graph (no pauses yet):*
 - `agents/ingestion/state.py`: `IngestionState` (TypedDict) holding only what BR-111 allows: file
   name, document hash, page count, per-Table light data (id, pages, column names, dtypes, hints, row
   headers, context, ≤ 20 rows), `current`, `attempts`, `feedback`, the last answer, assembled
@@ -420,43 +406,11 @@ if present).
   `current` / `attempts` / `feedback`, zero Tables → `index` (FR-142), `recursion_limit` per FR-143,
   and `run_ingestion(...)` that streams `stream_mode="updates"` and returns the final outcome. In this
   iteration `ask_unreadable` and `ask_skipped` are **not** in the graph: unreadable parts are skipped
-  and listed, skipped Tables are listed, and indexing proceeds with the valid Tables. (Iteration 8 adds
+  and listed, skipped Tables are listed, and indexing proceeds with the valid Tables. (Part 2 of this iteration adds
   the pauses.)
 - `tests/stubs.py`: `ScriptedChatModel` — answers per Table and attempt from a script, records every
   message list and the model name, can raise a given error.
-- Artifacts: `CONTEXT.md`; record `iterations/07-graph.md`; S01-D entries for any state-shape choice.
-
-**Success criteria** (command: `.venv/bin/python -m pytest -q tests/unit/test_graph.py tests/unit/test_nodes.py`, then the full suite):
-- VC-105, VC-106, VC-107 (graph part): the stub LLM and embeddings record zero calls; the fake
-  Pinecone and the temporary Table store are unchanged.
-- VC-130: the stub records model `LLM_MODEL` and structured output `TableEnrichment` (the chat
-  picker is not consulted — the graph never reads session state).
-- VC-134, VC-135, VC-136 as written in SPEC §8.
-- VC-144 (graph part): a too-large Table becomes a Skipped part; the others are indexed.
-- VC-145, VC-146, VC-147 (graph part), VC-160, VC-168 as written in SPEC §8.
-- VC-159 (messages and state part): fake secrets appear in no recorded message and no final state.
-- VC-167: a 200-row Table → no state update holds `bytes` or more than 20 rows; the per-run store is
-  empty after the run.
-- Full suite green; record complete.
-
-**Hands off**: `build_graph` / `run_ingestion` signatures, the deps object, the state keys, the
-node names (they become LangSmith span names and the README diagram), how a run's outcome is
-returned (indexed metadata, Skipped parts, image notes, message).
-
-**Commit message**: `Build the ingestion graph with the validation loop`
-
----
-
-## Iteration 8: Pauses and tracing
-
-**Goal**: The graph pauses for unreadable parts and for skipped Tables, resumes or cancels safely,
-and every run is traced with its labels even when the tracing variables are absent.
-
-**Reads**: Artifact Protocol steps 1–5; SPEC FR-119, FR-120, FR-134, FR-135, FR-153, FR-154, BR-103,
-BR-109, §7 "Ingestion graph"; `ROOT/DECISIONS.md` D-053, D-061, D-069; spec 00 A-006 (in
-`ROOT/specs/00-foundation-frozen.md`, "Known limits").
-
-**Scope**:
+*Part 2 — Pauses and tracing:*
 - `nodes.py` / `graph.py`: `ask_unreadable` after `extract_tables` (only when unreadable pages or
   tables exist) and `ask_skipped` after the last Table (only when a Table was skipped), each calling
   LangGraph `interrupt` with the exact FR-119 / FR-134 text (N = 0 variant included); resume with
@@ -468,44 +422,67 @@ BR-109, §7 "Ingestion graph"; `ROOT/DECISIONS.md` D-053, D-061, D-069; spec 00 
   the run executes inside a tracing context for `LANGSMITH_PROJECT` when `Settings` has tracing on,
   even if no `LANGSMITH_*` variable is in the environment (resolves spec 00 A-006). Tests stay offline:
   inspect the context, never send.
-- Artifacts: `CONTEXT.md`; record `iterations/08-pauses-tracing.md`.
+- Artifacts: `CONTEXT.md` (every section this iteration changes); `DECISIONS.md` if a choice was made; record `iterations/05-graph-pauses-tracing.md`.
 
-**Success criteria** (command: `.venv/bin/python -m pytest -q tests/unit/test_graph.py tests/unit/test_tracing_config.py`, then the full suite):
+**Success criteria**:
+*Part 1* (command: `.venv/bin/python -m pytest -q tests/unit/test_graph.py tests/unit/test_nodes.py`, then the full suite):
+- VC-105, VC-106, VC-107 (graph part): the stub LLM and embeddings record zero calls; the fake
+  Pinecone and the temporary Table store are unchanged.
+- VC-130: the stub records model `LLM_MODEL` and structured output `TableEnrichment` (the chat
+  picker is not consulted — the graph never reads session state).
+- VC-134, VC-135, VC-136 as written in SPEC §8.
+- VC-144 (graph part): a too-large Table becomes a Skipped part; the others are indexed.
+- VC-145, VC-146, VC-147 (graph part), VC-160, VC-168 as written in SPEC §8.
+- VC-159 (messages and state part): fake secrets appear in no recorded message and no final state.
+- VC-167: a 200-row Table → no state update holds `bytes` or more than 20 rows; the per-run store is
+  empty after the run.
+*Part 2* (command: `.venv/bin/python -m pytest -q tests/unit/test_graph.py tests/unit/test_tracing_config.py`, then the full suite):
 - VC-123 (pause part), VC-124, VC-137 as written in SPEC §8.
 - VC-156, VC-157 as written in SPEC §8.
 - VC-159 (trace config part): no fake secret in the run config or metadata.
 - VC-145 (text part): an all-skipped run reached through `ask_unreadable`'s Continue gives "I
   couldn't index any table from report.pdf.".
 - Full suite green, still no network connection; record complete.
+- Full suite green (`.venv/bin/python -m pytest -q`); the record lists every criterion with its command.
 
-**Hands off**: the interrupt payload shape (question text, choices) the UI renders; how the UI
+**Hands off**: `build_graph` / `run_ingestion` signatures, the deps object, the state keys, the
+node names (they become LangSmith span names and the README diagram), how a run's outcome is
+returned (indexed metadata, Skipped parts, image notes, message).
+the interrupt payload shape (question text, choices) the UI renders; how the UI
 resumes (`thread_id`, `Command`); how a run reports "paused" vs "finished" to its caller.
 
-**Commit message**: `Add ingestion pauses and LangSmith run labels`
+**Commit message**: `Build the ingestion graph with the validation loop and Add ingestion pauses and LangSmith run labels`
 
 ---
 
-## Iteration 9: The run in the chat
+## Iteration 6: The run in the chat + The catalog in the UI
 
 **Goal**: Attaching a PDF in the chat starts a real Ingestion run whose status lines stream into one
 assistant message, whose pauses show their buttons there, and whose result shows Table cards that
-stay in the history.
+stay in the history. The session holds the catalog loaded from Pinecone; uploads are checked against it
+(identical file, same name, catalog unavailable); the Library and the sidebar show real Documents
+and Tables.
 
-**Reads**: Artifact Protocol steps 1–5; SPEC FR-101, FR-104, FR-144 … FR-148, FR-161, FR-162,
+**Reads**: Artifact Protocol steps 1–5; SPEC FR-101, FR-104, FR-144 … FR-147 (FR-148 removed in spec v0.7), FR-161, FR-162,
 "Supersedes in spec 00" (header), NFR-107; `ROOT/DECISIONS.md` D-065, D-076, D-081, D-083;
 `ROOT/ui/chat.py`, `ROOT/ui/new_chat.py`, `ROOT/ui/sidebar.py`, `ROOT/app.py`,
 `ROOT/tests/functional/test_app.py`, `ROOT/tests/unit/test_chat.py`; spec 00 S00-D-018 in
 `ROOT/specs/00-foundation-plan-artifacts/DECISIONS.md` (AppTest cannot attach files).
+For part 2: Artifact Protocol steps 1–5; SPEC FR-102, FR-103, FR-149 … FR-152, FR-163, FR-164;
+`ROOT/DECISIONS.md` D-050, D-051, D-066, D-072, D-079, D-082; `ROOT/ui/library.py`,
+`ROOT/ui/documents.py` (`load_documents()` is the spec 00 seam), `ROOT/ui/new_chat.py` (the modal
+pattern: session flag + `st.dialog`).
 
 **Scope**:
+*Part 1 — The run in the chat:*
 - `ui/table_card.py`: the Table card (name, description, pages, columns with unit and dtype, row
   headers first 10 + "and N more", preview in a scrollable monospace box) — shared later by the
   Library.
 - `ui/ingestion.py`: starting a run for an uploaded PDF (bytes kept in memory only, FR-101), the
   `st.status` box fed by the graph's stream updates with the FR-144 lines, pause question + buttons
   inside the same message resuming the run (FR-145), the finished summary (cards, Skipped parts, image
-  notes, **Open in library** — it opens the Library view; filtering arrives in Iteration 10) (FR-146),
-  the "View trace" link when LangSmith returns the URL within 5 s (FR-148). The message is stored in
+  notes, **Open in library** — it opens the Library view; filtering arrives in part 2 of this iteration) (FR-146);
+  no link to LangSmith (D-095). The message is stored in
   the conversation as structured data and redrawn on every rerun (FR-147).
 - `ui/chat.py`: replace the PDF placeholder with the run (FR-101; SPEC "Supersedes": update spec 00's
   VC-028 / VC-028a tests accordingly); text + PDF → the question placeholder after the run ends
@@ -516,35 +493,7 @@ stay in the history.
   tested in `tests/unit/test_chat.py`, and the AppTest tests start a run by putting a pending upload
   (name + bytes) into session state; the graph is replaced by a stub runner that yields scripted
   updates and pauses.
-- Artifacts: `CONTEXT.md`; record `iterations/09-run-in-chat.md`.
-
-**Success criteria** (command: `.venv/bin/python -m pytest -q tests/functional tests/unit/test_chat.py tests/unit/test_ingestion_ui.py`, then the full suite):
-- VC-101, VC-104 (pure-function and AppTest parts as described above).
-- VC-148, VC-149, VC-150, VC-151, VC-170, VC-171 as written in SPEC §8.
-- Spec 00 functional tests still pass, with VC-028 / VC-028a updated as the "Supersedes" line says.
-- The student attaches `data/sample_pdfs/acme-annual-report-2023.pdf` in the real app (manual,
-  reported back): the status lines stream, cards appear.
-- Full suite green; record complete.
-
-**Hands off**: how a run message is stored in `messages`; the stub runner's name and script format;
-session-state keys for the active run; the `render_table_card` signature.
-
-**Commit message**: `Run ingestion from the chat with live status, pauses and Table cards`
-
----
-
-## Iteration 10: The catalog in the UI
-
-**Goal**: The session holds the catalog loaded from Pinecone; uploads are checked against it
-(identical file, same name, catalog unavailable); the Library and the sidebar show real Documents
-and Tables.
-
-**Reads**: Artifact Protocol steps 1–5; SPEC FR-102, FR-103, FR-149 … FR-152, FR-163, FR-164;
-`ROOT/DECISIONS.md` D-050, D-051, D-066, D-072, D-079, D-082; `ROOT/ui/library.py`,
-`ROOT/ui/documents.py` (`load_documents()` is the spec 00 seam), `ROOT/ui/new_chat.py` (the modal
-pattern: session flag + `st.dialog`).
-
-**Scope**:
+*Part 2 — The catalog in the UI:*
 - `ui/catalog.py`: load the catalog at session start through `load_catalog` (FR-149), keep it in
   session state, update it from a run's own results (no re-read), remember a load failure (FR-163);
   lookups by document hash and by file name.
@@ -557,23 +506,30 @@ pattern: session flag + `st.dialog`).
 - `ui/documents.py` / `ui/sidebar.py`: real Documents and Table names, newest first, in-place
   expanders unchanged, Document names navigate to the filtered Library, Table names plain text
   (FR-152); the failure message (FR-163).
-- Artifacts: `CONTEXT.md`; record `iterations/10-catalog-ui.md`.
+- Artifacts: `CONTEXT.md` (every section this iteration changes); `DECISIONS.md` if a choice was made; record `iterations/06-chat-and-catalog-ui.md`.
 
-**Success criteria** (command: `.venv/bin/python -m pytest -q tests/functional tests/unit/test_catalog_ui.py tests/unit/test_upload.py`, then the full suite):
+**Success criteria**:
+*Part 1* (command: `.venv/bin/python -m pytest -q tests/functional tests/unit/test_chat.py tests/unit/test_ingestion_ui.py`, then the full suite):
+- VC-101, VC-104 (pure-function and AppTest parts as described above).
+- VC-148, VC-149, VC-150, VC-170, VC-171 as written in SPEC §8 (VC-151 removed in spec v0.7).
+- Spec 00 functional tests still pass, with VC-028 / VC-028a updated as the "Supersedes" line says.
+*Part 2* (command: `.venv/bin/python -m pytest -q tests/functional tests/unit/test_catalog_ui.py tests/unit/test_upload.py`, then the full suite):
 - VC-102, VC-103, VC-152, VC-153, VC-154, VC-155, VC-172, VC-173 as written in SPEC §8 (upload
   checks through the pure function plus AppTest with a pending upload in session state).
 - Spec 00 VC-025b (Documents preview limits and escaping) and VC-031 (Library empty state with an
   empty catalog) still pass.
-- Full suite green; record complete.
+- Full suite green (`.venv/bin/python -m pytest -q`); the record lists every criterion with its command.
 
-**Hands off**: session keys of the catalog; the Library filter's key; how navigation into a filtered
-Library is requested (used by the README description in Iteration 11).
+**Hands off**: how a run message is stored in `messages`; the stub runner's name and script format;
+session-state keys for the active run; the `render_table_card` signature.
+session keys of the catalog; the Library filter's key; how navigation into a filtered
+Library is requested (used by the README description in Iteration 7).
 
-**Commit message**: `Show the catalog in the Library and sidebar and check uploads against it`
+**Commit message**: `Run ingestion from the chat with live status, pauses and Table cards and Show the catalog in the Library and sidebar and check uploads against it`
 
 ---
 
-## Iteration 11 (final): Live test, README and documentation
+## Iteration 7 (final): Live test, README and documentation
 
 **Goal**: The live test proves a real end-to-end ingestion, the README documents ingestion for a
 reader who was never here, and the whole spec is verified.
@@ -604,20 +560,23 @@ D-047, D-064, D-071.
 - `tests/unit/test_readme.py`: extend to pin the new sections (VC-162).
 - Every `ARTIFACTS/DECISIONS.md` entry is either reflected in the README or marked internal in the
   iteration record.
-- Artifacts: `CONTEXT.md` describing the shipped system; record `iterations/11-live-and-docs.md`.
+- Artifacts: `CONTEXT.md` (every section this iteration changes); `DECISIONS.md` if a choice was made; record `iterations/07-live-and-docs.md`.
 
 **Success criteria**:
+:
 - VC-162: `.venv/bin/python -m pytest -q tests/unit/test_readme.py` — the README has the ingestion
   design decisions, the AGPL-3.0 note, a Mermaid block naming every graph node, the known-limitations
   list and the regeneration command.
 - VC-163: `.venv/bin/python -m pytest -q` — all pass, zero network connections, under 60 s
   (NFR-103, NFR-108).
 - VC-164: `.venv/bin/python -m pytest -m live` — run **by the student**, reported PASS.
+- Manual, by the student (moved here from Iteration 6, D-102): attach both sample PDFs in the real app;
+  the status lines stream, pauses work, cards, Library and sidebar show the Documents.
 - VC-166: the student's manual end-to-end check — ACME ingests in under 3 minutes, status lines
   keep up, no horizontal page scroll at 1280×800 and 375 px (NFR-101, NFR-102, NFR-107).
 - The README's commands that this spec adds (sample PDF regeneration, `streamlit run app.py` with an
   upload) were run by the student and worked.
-- Artifacts: `CONTEXT.md` describes the finished state; one record per iteration exists.
+- Full suite green (`.venv/bin/python -m pytest -q`); the record lists every criterion with its command.
 
 **Hands off**: none (end of spec 01). The record lists anything spec 02 needs: `read_table`,
 `load_catalog` / `CatalogEntry`, the Index record fields, the model picker key.
@@ -632,55 +591,55 @@ Cross-check each requirement from the original spec:
 
 | Requirement | VC(s) | Iteration(s) | Verification |
 |---|---|---|---|
-| FR-101, FR-104 | VC-101, VC-104 | 9 | unit (pure upload handling) + AppTest with a pending upload |
-| FR-102, FR-103 | VC-102, VC-103 | 10 | unit + AppTest (modals) |
-| FR-105 … FR-108 | VC-105 … VC-107 | 1, 7 | unit (document) + graph with stubs (zero calls, nothing written) |
+| FR-101, FR-104 | VC-101, VC-104 | 6 | unit (pure upload handling) + AppTest with a pending upload |
+| FR-102, FR-103 | VC-102, VC-103 | 6 | unit + AppTest (modals) |
+| FR-105 … FR-108 | VC-105 … VC-107 | 1, 5 | unit (document) + graph with stubs (zero calls, nothing written) |
 | FR-109 … FR-112 | VC-108, VC-110, VC-111 | 3 | fixture PDFs |
 | FR-110 | VC-109 | 3 | fixture PDFs, DEBUG log captured |
 | FR-113, FR-114 | VC-112 … VC-117 | 2, 3 | grid-level unit + PDF-level fixtures |
-| FR-115 … FR-118 | VC-118 … VC-122 | 2, 5 | unit |
-| FR-119, FR-120, FR-122 | VC-123, VC-124 | 1, 3, 8 | fixtures + graph pause/resume/cancel |
+| FR-115 … FR-118 | VC-118 … VC-122 | 2, 4 | unit |
+| FR-119, FR-120, FR-122 | VC-123, VC-124 | 1, 3, 5 | fixtures + graph pause/resume/cancel |
 | FR-121 | VC-125, VC-169 | 1 | fixtures |
-| FR-123 … FR-126 | VC-126 … VC-129, VC-169 | 4 | fixtures |
-| FR-127 … FR-130 | VC-130 … VC-132 | 5, 7 | unit (messages) + graph (model, structured output) |
-| FR-131 | VC-133 | 5 | unit |
-| FR-132, FR-133 | VC-134 … VC-136 | 7 | graph with scripted stub LLM |
-| FR-134, FR-135 | VC-137 | 8 | graph pause |
-| FR-136, FR-141 | VC-138, VC-144 | 5, 7 | unit + graph |
-| FR-137 | VC-139 | 5 | unit |
-| FR-138 … FR-140 | VC-140 … VC-143, VC-174 | 6 | unit with fake Pinecone / embeddings / temp store |
-| FR-142, FR-143 | VC-145, VC-146 | 7, 8 | graph |
-| FR-144 … FR-148 | VC-148 … VC-151 | 9 | AppTest with stub runner |
-| FR-149 … FR-152 | VC-152 … VC-155 | 10 | AppTest with fake catalog |
-| FR-153, FR-154 | VC-156, VC-157 | 8 | config/context inspection, offline |
+| FR-123 … FR-126 | VC-126 … VC-129, VC-169 | 3 | fixtures |
+| FR-127 … FR-130 | VC-130 … VC-132 | 4, 5 | unit (messages) + graph (model, structured output) |
+| FR-131 | VC-133 | 4 | unit |
+| FR-132, FR-133 | VC-134 … VC-136 | 5 | graph with scripted stub LLM |
+| FR-134, FR-135 | VC-137 | 5 | graph pause |
+| FR-136, FR-141 | VC-138, VC-144 | 4, 5 | unit + graph |
+| FR-137 | VC-139 | 4 | unit |
+| FR-138 … FR-140 | VC-140 … VC-143, VC-174 | 4 | unit with fake Pinecone / embeddings / temp store |
+| FR-142, FR-143 | VC-145, VC-146 | 5 | graph |
+| FR-144 … FR-147 | VC-148 … VC-150 | 6 | AppTest with stub runner (FR-148 / VC-151 removed, D-095) |
+| FR-149 … FR-152 | VC-152 … VC-155 | 6 | AppTest with fake catalog |
+| FR-153, FR-154 | VC-156, VC-157 | 5 | config/context inspection, offline |
 | FR-155 | VC-158 | 1 | unit |
 | FR-156 | VC-161 | 3 | script run twice + extraction |
-| FR-157 | VC-162 | 11 | README test |
-| FR-158 | VC-163 | 11 | full offline suite |
-| FR-159 | VC-164 | 11 | live, by the student |
-| FR-160 | VC-168 | 7 | graph |
-| FR-161, FR-162 | VC-170, VC-171 | 9 | AppTest |
-| FR-163, FR-164 | VC-172, VC-173 | 6, 10 | unit + AppTest |
-| BR-101 | VC-138 | 5 | unit |
-| BR-102 | VC-132 | 5 | unit |
-| BR-103 | VC-124, VC-137 | 8 | graph |
-| BR-104 | VC-147 | 6, 7 | unit + graph |
-| BR-105 | VC-142 | 6 | unit |
-| BR-106 | VC-160 | 7 | graph + log capture |
-| BR-107 | VC-159 | 7, 8 | graph + config inspection |
-| BR-108 | VC-140 | 6 | unit |
-| BR-109 | VC-149 | 9 | AppTest |
-| BR-110 | VC-141, VC-174 | 6 | unit |
-| BR-111 | VC-167 | 7 | graph |
-| NFR-101, NFR-102, NFR-107 | VC-166 | 11 | manual, by the student |
-| NFR-103, NFR-108 | VC-163 | 11 | full offline suite |
-| NFR-104 | VC-165 | 5 | unit |
-| NFR-105 | VC-144 | 5, 7 | unit + graph |
-| NFR-106 | VC-147 | 6, 7 | unit + graph |
+| FR-157 | VC-162 | 7 | README test |
+| FR-158 | VC-163 | 7 | full offline suite |
+| FR-159 | VC-164 | 7 | live, by the student |
+| FR-160 | VC-168 | 5 | graph |
+| FR-161, FR-162 | VC-170, VC-171 | 6 | AppTest |
+| FR-163, FR-164 | VC-172, VC-173 | 4, 6 | unit + AppTest |
+| BR-101 | VC-138 | 4 | unit |
+| BR-102 | VC-132 | 4 | unit |
+| BR-103 | VC-124, VC-137 | 5 | graph |
+| BR-104 | VC-147 | 4, 5 | unit + graph |
+| BR-105 | VC-142 | 4 | unit |
+| BR-106 | VC-160 | 5 | graph + log capture |
+| BR-107 | VC-159 | 5 | graph + config inspection |
+| BR-108 | VC-140 | 4 | unit |
+| BR-109 | VC-149 | 6 | AppTest |
+| BR-110 | VC-141, VC-174 | 4 | unit |
+| BR-111 | VC-167 | 5 | graph |
+| NFR-101, NFR-102, NFR-107 | VC-166 | 7 | manual, by the student |
+| NFR-103, NFR-108 | VC-163 | 7 | full offline suite |
+| NFR-104 | VC-165 | 4 | unit |
+| NFR-105 | VC-144 | 4, 5 | unit + graph |
+| NFR-106 | VC-147 | 4, 5 | unit + graph |
 
 **Artifact check**: `CONTEXT.md` describes the shipped system (not an intermediate state),
 `DECISIONS.md` covers every non-obvious choice made along the way, and `iterations/` holds one record
-per iteration (01 … 11).
+per iteration (01 … 07).
 
 **Documentation check**: the README's new ingestion content exists, reads as standalone product
 documentation rather than a build log, and carries no reference to the plan, the spec or the

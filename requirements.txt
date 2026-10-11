@@ -13,5 +13,8 @@ pandas==3.0.6
 pyarrow==25.0.1
 pymupdf==1.28.2
 
+# Spec 02: Analyst agent sandbox (D-086).
+docker==7.1.0
+
 # Tests
 pytest==9.1.1

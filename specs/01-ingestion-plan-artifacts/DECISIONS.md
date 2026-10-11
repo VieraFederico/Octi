@@ -21,7 +21,8 @@ document even with `filetype="pdf"`; it would then fail as "no selectable text (
 **Decision**: `open_document` checks `doc.is_pdf` and raises `DocumentUnreadableError` (FR-105:
 "… may be damaged or not a real PDF.") for anything that is not a PDF.
 **Rejected**: let it fall through to FR-107 — the sentence would blame a scan for a non-PDF.
-**Consequences**: Covered by `test_bytes_that_are_not_a_pdf_are_unreadable[png]`. Student to confirm.
+**Consequences**: Covered by `test_bytes_that_are_not_a_pdf_are_unreadable[png]`.
+**Status**: accepted by the student (2026-10-11).
 
 ## S01-D-003: The same image on several pages is recognised by its content hash  (Iteration 1)
 **Context**: FR-121's repetition rule needs "the same image"; the spec does not say how to tell.
@@ -29,7 +30,8 @@ document even with `filetype="pdf"`; it would then fail as "no selectable text (
 counts on a page whatever its size there; it is repeated when `is_repeated(pages, page_count)`.
 **Rejected**: `xref` (PDF object number) — some writers store one copy of a logo per page, and inline
 images have xref 0; position/size — two different charts in the same spot would merge.
-**Consequences**: identical pixels at different sizes count as one image. Student to confirm.
+**Consequences**: identical pixels at different sizes count as one image.
+**Status**: accepted by the student (2026-10-11).
 
 ## S01-D-004: Document leaves carry their fixed sentence and take no argument  (Iteration 1)
 **Context**: Spec 00 leaves receive their `user_message` from the raising code. The three document
@@ -40,6 +42,7 @@ no-argument `__init__`: `raise DocumentEncryptedError()`. `TableStoreError` keep
 **Rejected**: module constants in `pdf/document.py` passed at each raise — the sentence would live far
 from the error and could drift between callers.
 **Consequences**: `tests/unit/test_errors.py` builds document leaves with no argument.
+**Status**: accepted by the student (2026-10-11).
 
 ## S01-D-005: What "no selectable text" and "an image on a page with text" mean in code  (Iteration 1)
 **Context**: FR-107, FR-119 and FR-121 name the conditions but not their test in code.
@@ -51,3 +54,27 @@ uses the image's box clipped to the page (`(bbox & page.rect)` area / page area)
 image-only pages in both lists.
 **Consequences**: Iteration 7 builds the FR-119 bullets from `pages_without_text` and the FR-121
 note from `reported_image_pages`, without overlap.
+
+## S01-D-006: Cleaning helpers use plain tuples, lists and coordinate spans (Iteration 2)
+**Context**: The plan leaves helper names and input/result shapes to implementation.
+**Decision**: `flatten_headers(header_rows, spans, column_spans)` returns names; spans are horizontal
+`(x0, x1)` pairs or `None`. `clean_column(values)` returns `(Series, list[str])`;
+`build_dataframe(names, rows)` returns `(DataFrame, dict[str, list[str]])`. Hints are distinct,
+first-seen `percent` / `currency: <symbol>` strings, empty on failed numeric conversion.
+`row_headers(frame)` returns only non-missing labels from the first column, retaining that column.
+**Rejected**: custom result classes, a single hint string, logical colspan inputs, missing labels
+as row headers — more indirection or less faithful geometry/data than the existing extraction shape.
+**Consequences**: Iteration 3 supplies rectangular/aligned grids, real spans and column extents;
+Iteration 5 consumes hints directly. No spec 02 interface or metadata schema changes.
+**Status**: accepted by the student (2026-10-11).
+
+## S01-D-007: Whole columns outside signed int64 range remain text (Iteration 2)
+**Context**: FR-117 requires int64 for whole columns without gaps, but specifies no overflow policy;
+PyMuPDF can supply digit strings beyond int64's representable range.
+**Decision**: Only columns that would require int64 are range-checked. A value outside
+`[-2**63, 2**63 - 1]` keeps the whole column as original text with no hints. The bounds are inclusive;
+fractional or missing numeric columns still use float64 as FR-117 requires.
+**Rejected**: rounding to float64, adding another metadata dtype, or raising an overflow error.
+**Consequences**: Such whole columns cannot crash int64 construction or silently round their values;
+the existing int64/float64/text contract for spec 02 is unchanged.
+**Status**: accepted by the student (2026-10-11).
