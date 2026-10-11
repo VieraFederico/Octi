@@ -7,5 +7,11 @@ pydantic==2.13.5
 python-dotenv==1.2.4
 streamlit==1.65.0
 
+# Spec 01: Ingestion agent (D-071), pinned to the student's first install (D-006).
+langgraph==1.2.14
+pandas==3.0.6
+pyarrow==25.0.1
+pymupdf==1.28.2
+
 # Tests
 pytest==9.1.1

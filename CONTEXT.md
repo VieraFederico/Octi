@@ -15,6 +15,26 @@ _Avoid_: page table, fragment, chunk
 The descriptive fields of a Table: name, description, columns, row headers and source.
 _Avoid_: annotations, enrichment
 
+**Table context**:
+The text around a Table in its PDF that tells what the Table is about: section title, caption,
+the text just before and after it, and its footnotes.
+_Avoid_: surroundings, nearby text
+
+**Table preview**:
+The first few rows of a Table, kept with its Table metadata so a reader can recognize the Table
+without loading its data.
+_Avoid_: sample, snippet
+
+**Document**:
+One PDF in the catalog, identified by its file name. Uploading a file with the same name replaces
+the Document and all its Tables.
+_Avoid_: file, upload, report
+
+**Skipped part**:
+A page, table or image of a Document that Octi could not read or could not describe correctly. It
+is reported to the user and never indexed.
+_Avoid_: error, failed table, missing page
+
 **Table store**:
 Where the data (cells) of every Table lives, keyed by its `table_id`.
 _Avoid_: database, cache
