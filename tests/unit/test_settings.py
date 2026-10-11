@@ -147,3 +147,24 @@ def test_chat_model_choices_put_the_default_first_without_duplicates(make_settin
 def test_chat_model_choices_default_to_llm_model_alone(make_settings) -> None:
     """D-037: no LLM_MODEL_CHOICES → only LLM_MODEL is offered."""
     assert make_settings().chat_model_choices == ["fake-chat-model"]
+
+
+def test_ingestion_max_retries_defaults_to_2_and_accepts_up_to_5(make_settings) -> None:
+    """VC-158 (spec 01 FR-155): unset → 2; "5" → 5."""
+    assert make_settings().INGESTION_MAX_RETRIES == 2
+    assert make_settings(INGESTION_MAX_RETRIES="5").INGESTION_MAX_RETRIES == 5
+
+
+@pytest.mark.parametrize("raw_value", ["6", "-1", "two"])
+def test_ingestion_max_retries_outside_0_to_5_is_rejected(make_settings, raw_value: str) -> None:
+    """VC-158 (spec 01 FR-155): 6, -1 and "two" → InvalidSettingsError naming INGESTION_MAX_RETRIES."""
+    with pytest.raises(InvalidSettingsError) as caught:
+        make_settings(INGESTION_MAX_RETRIES=raw_value)
+    assert caught.value.fields == ("INGESTION_MAX_RETRIES",)
+    assert "INGESTION_MAX_RETRIES" in caught.value.user_message
+
+
+def test_env_example_documents_ingestion_max_retries() -> None:
+    """VC-158 (spec 01 FR-155): the versioned example environment file lists the variable."""
+    example = (settings_module.REPO_ROOT / ".env.example").read_text(encoding="utf-8")
+    assert "INGESTION_MAX_RETRIES" in example

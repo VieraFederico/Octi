@@ -8,6 +8,11 @@ shows them.
     AppError
     ├── ConfigurationError
     │   └── InvalidSettingsError
+    ├── DocumentError                   (the uploaded file cannot be ingested at all)
+    │   ├── DocumentUnreadableError
+    │   ├── DocumentEncryptedError
+    │   └── DocumentWithoutTextError
+    ├── TableStoreError                 (local disk: reading or writing a Table's data file)
     └── ExternalServiceError            (.service)
         ├── LLMProxyError               (LiteLLM: chat + embeddings)
         │   ├── ProxyUnreachableError
@@ -59,6 +64,50 @@ class InvalidSettingsError(ConfigurationError):
     @property
     def fields(self) -> tuple[str, ...]:
         return tuple(self.problems)
+
+
+# --- Documents (spec 01) -----------------------------------------------------------------------
+
+
+class DocumentError(AppError):
+    """The uploaded file cannot be ingested at all (spec 01 FR-105 … FR-107).
+
+    Each leaf always says the same sentence, so it is a class attribute and the leaf takes no
+    argument: `raise DocumentEncryptedError()`.
+    """
+
+    message: ClassVar[str] = ""
+
+    def __init__(self) -> None:
+        super().__init__(self.message)
+
+
+class DocumentUnreadableError(DocumentError):
+    """PyMuPDF cannot open the bytes, or they are not a PDF (FR-105)."""
+
+    message = "I couldn't open this file. It may be damaged or not a real PDF."
+
+
+class DocumentEncryptedError(DocumentError):
+    """The PDF needs a password to be opened (FR-106)."""
+
+    message = "This PDF is password-protected. Remove the password and upload it again."
+
+
+class DocumentWithoutTextError(DocumentError):
+    """No page of the PDF has selectable text, e.g. a scan (FR-107)."""
+
+    message = "This PDF has no selectable text (it looks scanned). I can only read PDFs with selectable text."
+
+
+# --- Table store (spec 01) ---------------------------------------------------------------------
+
+
+class TableStoreError(AppError):
+    """Reading or writing a Table's data file on the local disk failed (spec 01 FR-139).
+
+    Directly under `AppError`: the disk is not an external service (D-080).
+    """
 
 
 # --- External services -------------------------------------------------------------------------

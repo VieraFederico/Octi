@@ -55,6 +55,11 @@ _Avoid_: query, chat turn
 
 ### Answering
 
+**Question part**:
+One sub-question of a user's question that can be answered or not on its own. A question with
+several parts can be answered for some of them only.
+_Avoid_: sub-query, step, clause
+
 **Candidate table**:
 A Table returned by retrieval as possibly relevant to a question.
 _Avoid_: hit, match, result

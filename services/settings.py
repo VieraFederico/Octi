@@ -88,6 +88,10 @@ class Settings(BaseModel):
     PINECONE_INDEX_NAME: str = Field(default="octi-tables", pattern=r"^[a-z0-9-]{1,45}$")
     PINECONE_NAMESPACE: str = Field(default="octi", min_length=1)
 
+    # Ingestion agent: extra `enrich` attempts per Table after a failed validation, so 3 attempts by
+    # default. Capped at 5 so a typo cannot burn the proxy budget (D-054).
+    INGESTION_MAX_RETRIES: int = Field(default=2, ge=0, le=5)
+
     LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
 
     @field_validator("LITELLM_BASE_URL")
