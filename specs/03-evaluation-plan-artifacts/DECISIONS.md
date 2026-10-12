@@ -46,3 +46,17 @@ Append-only. Project-wide decisions live in the root `DECISIONS.md` (D-106 … D
 - **Rejected:** a tracing-context tag from the caller (relies on unverified library behaviour);
   an own scoring loop with per-run feedback (changes FR-307's meaning).
 - **Consequences:** spec 02 §7's entry point gains `extra_tags`; the spec tab folds it into spec 03 §7.
+
+## S03-D-005: How a paused Analysis run is returned and resumed (Iteration 1)
+
+- **Context:** SPEC §7 fixes the interrupt payload and resume values, not how the caller sees a pause
+  or continues it; Streamlit reruns between the two halves.
+- **Decision:** one module-level `InMemorySaver` (`agents/analyst/graph.CHECKPOINTER`) for every run;
+  `run_analysis` returns the state with `confirmation_request` (the payload) while paused, and
+  `resume_analysis(thread_id, reply, deps)` continues the same thread; a finished run's checkpoint is
+  deleted. `confirmation` starts `"skipped"` when the toggle is off, so `confirm_tables` is a no-op
+  node on that route (the diagram's "off" edge). `ui.analysis.is_paused` disables only the composer.
+- **Rejected:** a checkpointer per call (the resumed half would not find the pause); a new return
+  type (breaks spec 02's callers).
+- **Consequences:** New chat during a pause leaves its checkpoint in memory (`abandon_analysis`
+  exists but is not yet called from New chat, which is spec 00/01 code).

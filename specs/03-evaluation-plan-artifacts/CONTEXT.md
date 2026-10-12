@@ -11,8 +11,14 @@ Staged verification (D-118) applies.
   recomputed from `scripts/make_sample_pdfs.py`'s constants by a test (BR-301).
 - `eval/scoring.py`: YAML schema and loader, the three deterministic evaluators, result rows and the
   `eval/results.md` writer.
-- Not yet: `confirm_tables` node, pause UI and toggle (Iteration 1); `scripts/run_eval.py`, the
-  LangSmith dataset sync and the experiment (Iteration 2b); `EVALUATION.md`, README (Iteration 3).
+- Iteration 1 (table confirmation): `confirm_tables` node after `select` (LangGraph `interrupt`,
+  module-level `InMemorySaver`), `run_analysis(question, window, deps, confirm_tables, *, on_update,
+  thread_id, extra_tags=())` returns `confirmation_request` while paused, `resume_analysis(thread_id,
+  reply, deps)`, `abandon_analysis(thread_id)` → `agents/analyst/graph.py`; `confirmation_payload`,
+  `apply_confirmation`, `CANCELLED_REASON`, `NO_TABLE_CHOSEN_REASON` → `agents/analyst/nodes.py`;
+  state field `confirmation`; UI toggle (`ui.analysis.CONFIRM_TABLES` session key, default on),
+  pause with checkboxes and Cancel / Calculate, `is_paused` → `ui/analysis.py`, placed in `ui/chat.py`.
+- `scripts/run_eval.py` (Iteration 2b) drafted, not yet run live; `EVALUATION.md`, README (Iteration 3).
 
 ## File map
 - `eval/__init__.py` — package marker.

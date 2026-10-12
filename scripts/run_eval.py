@@ -23,7 +23,8 @@ from agents.analyst.graph import mask_sandbox_output, run_analysis
 from agents.analyst.state import make_deps as make_analyst_deps
 from agents.ingestion.graph import build_graph as build_ingestion_graph
 from agents.ingestion.graph import resume_ingestion, run_ingestion
-from agents.ingestion.indexing import load_catalog
+from agents.ingestion.indexing import entry_from_record, load_catalog
+from agents.ingestion.schemas import CatalogEntry
 from agents.ingestion.pdf.tables import document_sha
 from agents.ingestion.state import make_deps as make_ingestion_deps
 from agents.ingestion.state import question_text
@@ -62,10 +63,15 @@ def sync_dataset(client: Any, questions: list[Question], name: str = DATASET) ->
     return dataset
 
 
-def ingest_samples(settings: Settings, catalog: list, out: Out = print, folder: Path = OUT_DIR) -> int:
-    """Ingest each sample PDF not yet in the catalog (by document hash); returns how many ran."""
+def ingest_samples(settings: Settings, catalog: list[CatalogEntry], out: Out = print,
+                   folder: Path = OUT_DIR) -> list[CatalogEntry]:
+    """Ingest each sample PDF not yet in the catalog (by document hash); returns the indexed entries.
+
+    The entries come from the write acknowledgement, because a catalog read right after the write
+    may not list them yet (the Index is eventually consistent).
+    """
     known = {entry.document_sha for entry in catalog}
-    deps, graph, ran = None, None, 0
+    deps, graph, indexed = None, None, []
     for name in SAMPLE_FILES:
         pdf = (folder / name).read_bytes()
         if document_sha(pdf) in known:
@@ -81,8 +87,9 @@ def ingest_samples(settings: Settings, catalog: list, out: Out = print, folder: 
             out(f"{name}: paused — {question_text(result.question)} → answered {choice['label']}")
             result = resume_ingestion(graph, deps, result.thread_id, choice["value"])
         out(f"{name}: {result.values['outcome']['status']}")
-        ran += 1
-    return ran
+        if result.values["outcome"]["status"] == "indexed":
+            indexed += [entry_from_record(item["record_metadata"]) for item in result.values.get("assembled") or []]
+    return indexed
 
 
 def commit_sha() -> str:
@@ -107,8 +114,10 @@ def main(out: Out = print) -> int:
             sync_dataset(client, questions)
         out(f"Dataset {DATASET}: {len(questions)} questions")
         catalog = load_catalog(settings)
-        if ingest_samples(settings, catalog, out):
-            catalog = load_catalog(settings)
+        indexed = ingest_samples(settings, catalog, out)
+        if indexed:
+            fresh = {entry.table_id: entry for entry in load_catalog(settings)}
+            catalog = list({**fresh, **{entry.table_id: entry for entry in indexed}}.values())
     except AppError as error:
         out(f"The evaluation could not start: {error.user_message}")
         return 1
@@ -139,9 +148,14 @@ def main(out: Out = print) -> int:
                     "comment": "not applicable" if mark is None else ""}
         return score
 
-    results = client.evaluate(target, data=DATASET, evaluators=[evaluator(name) for name in EVALUATORS],
-                              experiment_prefix=EXPERIMENT_PREFIX, max_concurrency=0,
-                              metadata={"llm_model": settings.LLM_MODEL, "commit": commit_sha()})
+    try:
+        with translate_tracing_errors():
+            results = client.evaluate(target, data=DATASET, evaluators=[evaluator(name) for name in EVALUATORS],
+                                      experiment_prefix=EXPERIMENT_PREFIX, max_concurrency=0,
+                                      metadata={"llm_model": settings.LLM_MODEL, "commit": commit_sha()})
+    except AppError as error:
+        out(f"The evaluation could not start: {error.user_message}")
+        return 1
     traces: dict[str, str] = {}
     for row in results:
         try:
