@@ -20,6 +20,7 @@ from pathlib import Path
 import streamlit as st
 
 from services.vector_store import SETUP_COMMAND
+from services.sandbox import BUILD_COMMAND, SANDBOX_IMAGE
 from ui.bubble import bubble_html
 from ui.logo import ERROR_LOGO_DIR, LOGO_DIR, load_frames, logo_html
 from ui.startup import Startup
@@ -30,6 +31,7 @@ SERVICE_CHECK_COMMAND = "python -m scripts.check_services"
 CONFIG_SECTION = "Getting started › Configure your secrets"
 INDEX_SECTION = "Getting started › Create the Pinecone index"
 SERVICES_SECTION = "Getting started › Check every service"
+SANDBOX_SECTION = "Getting started › Build the sandbox image"  # README addition in spec 02's final iteration
 
 
 def render_error_screen(startup: Startup) -> None:
@@ -48,6 +50,14 @@ def error_message(startup: Startup) -> str:
 
     settings, status = startup.settings, startup.index_status
     assert settings is not None and status is not None  # settings parsed, so the index was checked
+    if status.outcome == "ok":
+        docker_status = startup.docker_status
+        missing = docker_status is not None and docker_status.outcome == "image_missing"
+        return _message(
+            f"Docker cannot find the sandbox image '{SANDBOX_IMAGE}'." if missing else "Octi could not reach Docker.",
+            f"What to do: start Docker and build the sandbox image with\n{BUILD_COMMAND}\nthen restart the app.",
+            SANDBOX_SECTION,
+        )
     name = settings.PINECONE_INDEX_NAME
     if status.outcome == "missing":
         return _message(

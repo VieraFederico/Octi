@@ -113,3 +113,30 @@ Project-wide decisions are in the root `DECISIONS.md` (D-085 … D-116 for this 
   plus `…` (no fence remains at that point). The question and its parts are not capped. Student choice.
 - **Rejected:** capping the question text (a new rule for a case not seen).
 - **Consequences:** 39,552 of 40,000 characters measured; a very long question can exceed the total.
+
+## S02-D-012: Sandbox result and folder contracts (Iteration 2)
+- **Context:** the plan specifies result fields but not their types or the fallback-folder argument.
+- **Decision:** student-approved frozen `SandboxResult(exit_code, timed_out, stdout, stderr)` and
+  `DockerStatus(outcome)` with `ok`, `unreachable`, `image_missing`; `prepare_run_folder` takes
+  keyword-only `base_dir=None`. Callers may pass `FALLBACK_RUN_DIR` (`data/sandbox_runs/`).
+- **Rejected:** untyped result dictionaries; a new environment variable for the fallback folder.
+- **Consequences:** Iteration 3 reads result attributes and provides the complete script; services
+  remain agent-agnostic. Existing spec 01 names require no additional mapping in this iteration.
+
+## S02-D-013: No automatic image download; optional SDK import (Iteration 2)
+- **Context:** the existing WSL venv lacks the pinned Docker SDK; SDK `containers.run` pulls on
+  `ImageNotFound` ([SDK 7.1 source](https://github.com/docker/docker-py/blob/7.1.0/docker/models/containers.py)).
+- **Decision:** student-approved lazy SDK import at the production boundary; fake clients need no
+  SDK. Look up the local image, then use `containers.create` and `container.start`, with the
+  same isolation settings. Missing SDK/daemon/image is reported as unavailable; never pull.
+- **Rejected:** installing the SDK; `containers.run` with its implicit pull behavior.
+- **Consequences:** offline verification works with existing dependencies. The student owns image
+  builds and live verification; live execution needs the already-pinned dependency available.
+
+## S02-D-014: Retain the output tail (Iteration 2)
+- **Context:** FR-220 specifies a 64 KB cap but not which end of the stream survives.
+- **Decision:** student-approved last 65,536 bytes per stream, read in chunks; decode UTF-8,
+  ignoring incomplete bytes at the cap boundary.
+- **Rejected:** retaining the first 64 KB (can discard the final `emit` line and error details).
+- **Consequences:** the last result line and stderr feedback survive preceding verbose output;
+  output exceeding the cap within its final JSON line remains invalid for the Analyst to classify.

@@ -29,6 +29,7 @@ def test_all_healthy_prints_ok_lines_and_exits_zero(make_settings, capsys: pytes
         "embeddings: OK",
         "pinecone: OK",
         "langsmith: OK",
+        "docker: OK",
         "git: OK",
     ]
 
@@ -39,7 +40,7 @@ def test_one_failure_exits_non_zero_but_prints_every_line(make_settings, capsys:
     exit_code = main(lambda: make_settings(LANGSMITH_TRACING="true"), clients)
     lines = capsys.readouterr().out.splitlines()
     assert exit_code != 0
-    assert len(lines) == 7
+    assert len(lines) == 8
     assert lines[2].startswith("chat: FAIL: ")
 
 

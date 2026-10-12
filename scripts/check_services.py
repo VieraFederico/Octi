@@ -4,6 +4,7 @@ Run from the repository root:  python -m scripts.check_services
 
 Prints one line per check (`OK`, `FAIL: <reason>` or `skipped (<reason>)`) and exits non-zero if any
 check failed (FR-015 … FR-018). It makes one real chat call and one real embedding call.
+The Docker line checks daemon reachability and the local sandbox image; it never builds or pulls.
 """
 
 import sys

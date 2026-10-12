@@ -1,9 +1,9 @@
-# CONTEXT — Spec 02 Analyst agent (after Iteration 1)
+# CONTEXT — Spec 02 Analyst agent (after Iteration 2)
 
-Starting point: spec 00 complete; spec 01 through Iteration 6 (`0e10420`), see
-`specs/01-ingestion-plan-artifacts/CONTEXT.md`. Iteration 1 ran in parallel mode (D-115): the lead
-wrote the contract below, packages WP-A (prompts), WP-B (checks), WP-C (prelude) implemented it, the
-lead integrated. Staged verification (D-118) applies from now on.
+Starting point: spec 00 complete; spec 02 Iteration 1 committed (`5a61b7e`). Spec 01's committed
+records currently reach Iteration 5, and its next UI iteration is being implemented concurrently;
+read its current artifacts before consuming its interfaces. Iteration 2 was implemented alone.
+Spec 02 v0.7 and staged verification (D-118) apply. Iteration 4 requires spec 01 Iteration 7 committed.
 
 ## Current state
 - `Settings.ANALYST_MAX_RETRIES` (int 0–5, default 2) and `Settings.SANDBOX_TIMEOUT_SECONDS` (int
@@ -16,10 +16,15 @@ lead integrated. Staged verification (D-118) applies from now on.
 - `agents/analyst/checks.py`: selection check, attempt classification, status merge, number check,
   template answer.
 - `agents/analyst/prelude.py`: alias rule and the prelude source with `emit`'s safety net.
-- `tests/analyst_stubs.py`: `catalog_entry(...)`, `query_plan(...)`.
+- `tests/analyst_stubs.py`: `catalog_entry(...)`, `query_plan(...)`, `FakeDockerClient`.
 - `tests/unit/test_analyst_pieces.py`: seam tests — the code few-shot runs through the prelude and
   every check; its aliases are the ones `make_aliases` derives.
-- Not yet: the sandbox service (Iteration 2), the graph (3), the UI (4), live tests and README (5).
+- `services/sandbox.py`: isolated execution, temporary folders, bounded output tails, timeout kill,
+  cleanup, lazy SDK factory, safe error translation and read-only daemon/image checks.
+- `sandbox/Dockerfile`: `python:3.13-slim`, pandas 3.0.6, pyarrow 25.0.1, non-root user 10001.
+- Startup requires a healthy sandbox as well as valid settings and index; developer setup errors
+  name Docker and the image build command. Diagnostics include a `docker` line.
+- Not yet: the graph (3), the Analysis UI (4), exhaustive VC tests, live checks and README (5).
 
 ## File map
 - `agents/analyst/__init__.py` — package marker.
@@ -34,8 +39,16 @@ lead integrated. Staged verification (D-118) applies from now on.
   `tests/unit/test_prelude.py` (4), `tests/unit/test_analyst_pieces.py` (2) — the package tests and
   the seams.
 - `tests/unit/test_settings.py`, `tests/unit/test_errors.py` — + VC-238 cases.
+- `services/sandbox.py`, `sandbox/Dockerfile` — sandbox service and student-built image recipe.
+- `ui/startup.py`, `ui/error_screen.py`, `services/health.py`, `scripts/check_services.py` — shared
+  startup/diagnostic integration (student-approved).
+- `tests/conftest.py` — approved offline fake-Docker factory; live tests retain real factories.
+- `tests/unit/test_sandbox.py`, `tests/unit/test_sandbox_health.py`,
+  `tests/functional/test_sandbox_startup.py` — six smoke cases across execution and integration.
+- `tests/unit/test_check_services.py`, `tests/unit/test_error_screen.py` — existing expectations
+  updated for the added service; `.gitignore` excludes `data/sandbox_runs/`.
 
-## Contract (Iteration 1)
+## Pure-piece contract (Iteration 1; historical package ownership)
 
 ### Ownership (nobody edits another package's files)
 | Package | Owns | VCs |
@@ -153,6 +166,20 @@ on invented tables and ids that are not from the sample PDFs.
   `values: {}`. Prints `json.dumps({"parts": cleaned}, allow_nan=False)` (ASCII) with `flush=True`.
 
 ## Public interfaces
+- Sandbox results: frozen `SandboxResult(exit_code, timed_out, stdout, stderr)` and
+  `DockerStatus(outcome)` (`ok | unreachable | image_missing`, fixed developer `reason`) → `services/sandbox.py`.
+- `make_docker_client() -> DockerClient`, `translate_sandbox_errors()` (context manager),
+  `prepare_run_folder(script, table_files, *, base_dir=None) -> Path`,
+  `run_script(folder, timeout_s, client=None) -> SandboxResult`,
+  `check_docker(client=None) -> DockerStatus` → `services/sandbox.py` (S02-D-012/013).
+- `FALLBACK_RUN_DIR` = repo `data/sandbox_runs/`; `SANDBOX_IMAGE`, `BUILD_COMMAND`,
+  `OUTPUT_CAP_BYTES` = 65,536 → `services/sandbox.py`.
+- `Startup.docker_status` (fourth field; settings error remains third), `load_startup()` checks
+  index and sandbox → `ui/startup.py`; `SANDBOX_SECTION` → `ui/error_screen.py`.
+- `Clients.docker` (zero-argument factory), `check_sandbox(factory)` → `services/health.py`.
+- `FakeDockerClient(reachable=True, image_present=True, exit_code=0, timed_out=False,
+  stdout=b"", stderr=b"", create_error=None)` → `tests/analyst_stubs.py`; records `create_calls`,
+  `image_lookups`, `closed`, and `container.started/killed/removed/wait_timeouts`.
 - Settings: `Settings.ANALYST_MAX_RETRIES`, `Settings.SANDBOX_TIMEOUT_SECONDS` → `services/settings.py`.
 - Errors: `SandboxError`, `SandboxUnavailableError(user_message)` → `services/errors.py`.
 - Models and shapes → `agents/analyst/schemas.py`.
@@ -172,17 +199,32 @@ on invented tables and ids that are not from the sample PDFs.
 - Analyst stubs go in `tests/analyst_stubs.py` until Iteration 5 (D-105).
 - The Answer status comes only from `merge_status` (BR-202); prompts never decide it.
 - Values reach `respond` only for `answered` outcomes (FR-228).
+- SDK `create` + `start` replaces the plan's `run` to prevent implicit image pulls (S02-D-013).
+- `prepare_run_folder` owns its newly created directory; pass only its returned folder to
+  `run_script`, which removes it even on a service failure. Folder/files are 0755/0644.
+- Caller-injected clients remain open after `run_script`/`check_docker`; internal clients close.
+  Health owns the client from its factory and closes it after the check.
+- Timeout is an attempt result, not an infrastructure error; result exit code is 137 on timeout.
+  Stdout/stderr keep the last 64 KB each, streamed and decoded as UTF-8 (S02-D-014).
+- Infrastructure exceptions become a chained `SandboxUnavailableError` with a generic message;
+  raw details remain DEBUG-only. Services never import agents.
 
 ## Commands
 ```bash
-.venv/bin/python -m pytest -q    # offline suite (650 passed, 1 deselected after Iteration 1)
+.venv/bin/python -m pytest -q    # 665 passed, 1 live test deselected in 39.54 s after Iteration 2
+.venv/bin/python -m pytest -q tests/unit/test_sandbox.py tests/unit/test_sandbox_health.py tests/functional/test_sandbox_startup.py tests/unit/test_health.py tests/unit/test_check_services.py tests/unit/test_error_screen.py tests/functional/test_error_screen.py
 .venv/bin/python -m pytest -q tests/unit/test_analyst_prompts.py tests/unit/test_analyst_checks.py tests/unit/test_prelude.py tests/unit/test_settings.py tests/unit/test_errors.py tests/unit/test_analyst_pieces.py tests/unit/test_analyst_stubs.py
 ```
 On this Windows machine the venv is a WSL one: `wsl.exe --cd "<repo as /mnt/c/...>" -- .venv/bin/python -m pytest -q`.
 
 ## Known gaps
-- `check_selection` also rejects an `answerable` part with no `table_ids` (student-approved,
-  S02-D-004); FR-212 does not list it yet (flagged to the spec tab).
+- The existing WSL virtual environment lacks `docker==7.1.0`. Fake-client tests do not need it;
+  production startup reports unavailable. No dependency was installed or image built/pulled.
+- `SANDBOX_SECTION` is the final iteration's README title; the section is intentionally not
+  written until Iteration 5. Exhaustive VCs deferred under D-118 are listed in Iteration 2's record.
+- Real image compatibility, daemon isolation, file sharing and timings remain student live checks.
+- `prepare_run_folder` copies the supplied complete script; Iteration 3's `execute` node adds the
+  prelude and supplies only Selected table paths. Pass `base_dir=FALLBACK_RUN_DIR` when needed.
 - Zero Question parts or more than 3 search phrases from `understand` are handled in Iteration 3
   (S02-D-001), not by the model class.
 - `template_answer` is English only; `respond` writes in the question's language.
@@ -190,5 +232,4 @@ On this Windows machine the venv is a WSL one: `wsl.exe --cd "<repo as /mnt/c/..
   classification, which rejects repeats).
 - The `select` question and parts are not capped (S02-D-011): a very long question with 10
   maximum-size candidates can pass 40,000 characters.
-- FR-212 (empty `table_ids` check, S02-D-004) and FR-227 (no method for `cannot_answer`,
-  S02-D-010) need the spec tab to fold them in.
+- Spec v0.7 now folds the selection addition (D-117) and no method for `cannot_answer` (D-119).

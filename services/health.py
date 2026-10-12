@@ -23,6 +23,7 @@ from typing import Any, Literal
 
 from services.errors import AppError, EmbeddingDimensionError, InvalidSettingsError, ModelNotAvailableError
 from services.llm import list_proxy_models, make_chat_model, make_embeddings, translate_proxy_errors
+from services.sandbox import DockerClient, check_docker, make_docker_client, translate_sandbox_errors
 from services.settings import ENV_FILE, REPO_ROOT, Settings, get_settings
 from services.tracing import make_langsmith_client, translate_tracing_errors
 from services.vector_store import IndexClient, check_index, make_pinecone_client
@@ -34,7 +35,7 @@ EMBEDDING_PROBE = "Octi service check"
 GIT_TIMEOUT_SECONDS = 10
 
 # The checks that need valid configuration, in the order they are printed.
-SERVICE_CHECKS = ("models", "chat", "embeddings", "pinecone", "langsmith")
+SERVICE_CHECKS = ("models", "chat", "embeddings", "pinecone", "langsmith", "docker")
 
 
 @dataclass(frozen=True)
@@ -73,6 +74,7 @@ class Clients:
     pinecone: Callable[[Settings], IndexClient] = make_pinecone_client
     langsmith: Callable[[Settings], Any] = make_langsmith_client
     run_git: Callable[[list[str]], subprocess.CompletedProcess[str]] = run_git_in_repo
+    docker: Callable[[], DockerClient] = lambda: make_docker_client()
 
 
 # --- The checks ----------------------------------------------------------------------------------
@@ -130,6 +132,17 @@ def check_langsmith(settings: Settings, make_client: Callable[[Settings], Any]) 
     return CheckResult("langsmith", "OK")
 
 
+def check_sandbox(make_client: Callable[[], DockerClient]) -> CheckResult:
+    """Daemon reachable and the locally built sandbox image exists (spec 02 FR-233)."""
+    with translate_sandbox_errors():
+        client = make_client()
+        try:
+            status = check_docker(client)
+            return CheckResult("docker", "OK" if status.outcome == "ok" else "FAIL", status.reason)
+        finally:
+            client.close()
+
+
 def check_git_tracking(run_git: Callable[[list[str]], subprocess.CompletedProcess[str]]) -> CheckResult:
     """Safety net (FR-016): the secrets file must not be tracked by git.
 
@@ -172,6 +185,7 @@ def run_checks(load_settings: Callable[[], Settings] = get_settings, clients: Cl
             _safely("embeddings", lambda: check_embeddings(settings, clients.embeddings)),
             _safely("pinecone", lambda: check_pinecone(settings, clients.pinecone)),
             _safely("langsmith", lambda: check_langsmith(settings, clients.langsmith)),
+            _safely("docker", lambda: check_sandbox(clients.docker)),
         ]
     results.append(_safely("git", lambda: check_git_tracking(clients.run_git)))
     return results

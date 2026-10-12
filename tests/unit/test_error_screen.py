@@ -6,6 +6,7 @@ import pytest
 
 from services.errors import InvalidSettingsError
 from services.settings import REPO_ROOT
+from services.sandbox import DockerStatus
 from tests.stubs import FAKE_PINECONE_KEY, MISMATCH_INDEX, MISSING_INDEX, OK_INDEX, UNREACHABLE_INDEX
 from ui.error_screen import CONFIG_SECTION, INDEX_SECTION, SERVICES_SECTION, error_frames, error_message, error_screen_html
 from ui.startup import Startup
@@ -24,7 +25,8 @@ def write_frames(folder: Path, *texts: str) -> Path:
 def test_startup_is_ok_only_with_settings_and_a_ready_index(make_settings) -> None:
     """The shell opens only when configuration parsed and the index is `ok` (D-031)."""
     settings = make_settings()
-    assert Startup(settings, OK_INDEX).ok
+    assert Startup(settings, OK_INDEX, docker_status=DockerStatus("ok")).ok
+    assert not Startup(settings, OK_INDEX).ok
     assert not Startup(settings, MISSING_INDEX).ok
     assert not Startup(None, None, InvalidSettingsError({"LITELLM_API_KEY": "missing"})).ok
 
