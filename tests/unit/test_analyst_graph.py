@@ -9,7 +9,7 @@ from agents.analyst.graph import run_analysis
 from agents.analyst.schemas import CodeDraft, FinalAnswer, PartSelection, TableSelection, Turn
 from services.errors import ProxyUnreachableError, SandboxUnavailableError, VectorStoreUnreachableError
 from services.sandbox import SandboxResult
-from tests.analyst_stubs import analyst_deps, catalog_entry, query_plan
+from tests.stubs import analyst_deps, analyst_catalog_entry as catalog_entry, query_plan
 
 CODE = CodeDraft(code='emit([{"part": 1, "status": "answered", "values": {"Revenue": 1288.7}}])', approach="Read the revenue row.")
 ANSWER = FinalAnswer(text="Net revenue is 1,288.7 USD millions.")
@@ -92,7 +92,7 @@ def test_analysis_route_terminates_with_its_evidence(make_settings, tmp_path, ro
     updates = []
 
     # When
-    state = run_analysis(plan.standalone_question, [Turn(f"Earlier {i}", "Previous answer") for i in range(6)], deps, on_update=lambda name, update: updates.append((name, update)))
+    state = run_analysis(plan.standalone_question, [Turn(f"Earlier {i}", "Previous answer") for i in range(6)], deps, False, on_update=lambda name, update: updates.append((name, update)))
 
     # Then
     names = [name for name, _ in updates]

@@ -9,6 +9,7 @@ from dataclasses import asdict
 from typing import Any, TypeVar
 
 from langchain_core.exceptions import OutputParserException
+from langgraph.types import interrupt
 from pydantic import BaseModel, ValidationError
 
 from agents.analyst import checks, prompts
@@ -37,6 +38,8 @@ NO_TABLES_MESSAGE = "There are no tables in the library yet. Attach a PDF with +
 OUTAGE_MESSAGE = "Something went wrong on my side and I couldn't answer. Please try again in a moment."
 CODE_DRAFT_FEEDBACK = "Your answer must be a CodeDraft with non-empty code and approach."
 SELECTION_SHAPE_FEEDBACK = "Return a valid TableSelection object with one entry for every question part."
+CANCELLED_REASON = "Cancelled before calculating."
+NO_TABLE_CHOSEN_REASON = "No table was chosen."
 
 Model = TypeVar("Model", bound=BaseModel)
 
@@ -143,6 +146,51 @@ def selected_tables(state: AnalystState, *, answerable_only: bool = True) -> lis
     ids = {table_id for part in (selection.parts if selection is not None else [])
            if not answerable_only or part.verdict == "answerable" for table_id in part.table_ids}
     return [entry for entry in state.get("candidates", []) if entry.table_id in ids]
+
+
+def confirmation_payload(state: AnalystState) -> dict[str, Any]:
+    """The pause's content: per part its Selected tables and every Candidate table, or its reason."""
+    plan, selection = state["plan"], state["selection"]
+    assert plan is not None and selection is not None
+    texts = {part.number: part.text for part in plan.parts}
+    candidates = [{"table_id": entry.table_id, "name": entry.name, "document": entry.source_file,
+                   "pages": list(entry.pages)} for entry in state["candidates"]]
+    parts = []
+    for part in selection.parts:
+        answerable = part.verdict == "answerable"
+        parts.append({"number": part.part, "text": texts.get(part.part, ""), "answerable": answerable,
+                      "selected": list(part.table_ids) if answerable else [],
+                      "candidates": candidates if answerable else [], "reason": "" if answerable else part.missing})
+    return {"parts": parts}
+
+
+def apply_confirmation(state: AnalystState, reply: dict[str, Any]) -> dict[str, Any]:
+    """The user's choice becomes the selection: only Candidate tables count; none chosen → missing."""
+    selection = state["selection"]
+    assert selection is not None
+    if reply.get("action") == "cancel":
+        parts = [PartSelection(part=part.part, table_ids=part.table_ids, verdict="missing_data", missing=CANCELLED_REASON)
+                 for part in selection.parts]
+        return {"selection": TableSelection(parts=parts), "confirmation": "cancelled"}
+    candidate_ids = {entry.table_id for entry in state["candidates"]}
+    chosen_by_part = {int(number): ids for number, ids in (reply.get("tables") or {}).items()}
+    parts, changed = [], False
+    for part in selection.parts:
+        if part.verdict != "answerable":
+            parts.append(part)
+            continue
+        chosen = list(dict.fromkeys(table_id for table_id in chosen_by_part.get(part.part, []) if table_id in candidate_ids))
+        changed = changed or set(chosen) != set(part.table_ids)
+        parts.append(part.model_copy(update={"table_ids": chosen}) if chosen else
+                     PartSelection(part=part.part, table_ids=[], verdict="missing_data", missing=NO_TABLE_CHOSEN_REASON))
+    return {"selection": TableSelection(parts=parts), "confirmation": "changed" if changed else "confirmed"}
+
+
+def confirm_tables(state: AnalystState, deps: AnalystDeps) -> dict[str, Any]:
+    """Pause for the user's table choice unless confirmation is off for this run (spec 03 FR-315)."""
+    if state.get("confirmation") == "skipped":
+        return {}
+    return apply_confirmation(state, interrupt(confirmation_payload(state)))
 
 
 def generate_code(state: AnalystState, deps: AnalystDeps) -> dict[str, Any]:

@@ -99,3 +99,21 @@ def test_ingestion_status_and_usage_describe_the_shipped_ui() -> None:
     assert "The two agents are\nnot built yet" not in text
     for phrase in ("Open in library", "Cancel ingestion", "Replace", "Keep", "Show more", "View all"):
         assert phrase in text
+
+
+def test_analyst_documentation_and_exported_graph_are_present(make_settings) -> None:
+    """VC-242/243: setup, calculation choices and the actual Analyst graph are documented."""
+    from agents.analyst.graph import NODE_NAMES, build_graph
+    from agents.analyst.state import make_deps
+
+    for phrase in ("### Analyst", "ANALYST_MAX_RETRIES", "SANDBOX_TIMEOUT_SECONDS",
+                   "docker build -t octi-sandbox:1 sandbox/", "512 MB", "64 processes",
+                   "four completed", "number check", "wrong row", "wrong entity"):
+        assert phrase in README
+    blocks = re.findall(r"```mermaid\s*\n(.*?)```", README, flags=re.DOTALL)
+    exported = build_graph(make_deps(make_settings())).get_graph().draw_mermaid()
+    assert exported.strip() in [block.strip() for block in blocks]
+    assert all(node in exported for node in NODE_NAMES)
+    dockerfile = (REPO_ROOT / "sandbox" / "Dockerfile").read_text(encoding="utf-8")
+    for phrase in ("python:3.13-slim", "pandas==3.0.6", "pyarrow==25.0.1", "10001"):
+        assert phrase in dockerfile

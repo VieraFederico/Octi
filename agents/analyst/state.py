@@ -63,6 +63,7 @@ class AnalystState(TypedDict, total=False):
     answer_status: AnswerStatus | None
     answer: str | None
     error: AnalysisError | None
+    confirmation: Literal["skipped", "confirmed", "changed", "cancelled"] | None
 
 
 def table_file(table_id: str) -> Path:

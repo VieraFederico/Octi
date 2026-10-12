@@ -9,10 +9,11 @@ table, describes it with an LLM and indexes it in Pinecone; an **Analyst agent**
 question needs, writes and runs Python to compute the answer, and says whether the question was
 `answered`, `partial` or `cannot_answer`.
 
-> **Status: ingestion available.** Attach a PDF to extract and index its tables, follow the run in
-> the chat, answer any pauses, and browse the results in the Library. Configuration, service checks,
-> tracing and the calculation sandbox are available. Questions currently receive a placeholder
-> while the Analyst's calculation workflow is being integrated.
+> **Status.** The Ingestion agent is complete in the app: attach a PDF, follow the run in the chat,
+> answer any pauses, and browse the results in the Library. The Analyst agent — retrieval, table
+> selection, code generation, isolated execution in a Docker sandbox, self-correction and the
+> `answered` / `partial` / `cannot_answer` decision — is implemented and covered by the offline test
+> suite; in the chat, questions are not yet routed to it and receive a placeholder reply.
 
 ## Getting started
 
@@ -211,6 +212,14 @@ Octi/
 │   ├── unit/                one test file per module
 │   ├── functional/          the app, driven by Streamlit's AppTest
 │   └── live/                smoke test against the real services (pytest -m live)
+├── agents/analyst/
+│   ├── graph.py             StateGraph, routes, run labels and trace masking
+│   ├── state.py             analysis state and dependencies
+│   ├── nodes.py             understand → retrieve → select → code → sandbox → check → status → answer
+│   ├── schemas.py           query plan, selection, code draft, part outcomes, final answer
+│   ├── prompts.py           the four prompts and the shared answerability rules
+│   ├── checks.py            selection checks, attempt classification, status merge, number check
+│   └── prelude.py           trusted script prelude: tables and the emit() result contract
 ├── agents/ingestion/
 │   ├── graph.py             StateGraph, routes, streaming and tracing
 │   ├── state.py             light state, dependencies, per-run in-memory store
@@ -408,6 +417,47 @@ graph TD;
 - A local Streamlit component sends Document clicks to Python while browser-owned HTML expanders
   keep opening without a rerun. PDF-derived names, descriptions and previews are escaped.
 
+## Analyst workflow
+
+```mermaid
+flowchart TD
+    Q([Question]) --> loaded{Catalog loaded?}
+    loaded -- no --> fail
+    loaded -- yes --> empty{Library empty?}
+    empty -- yes --> none[no-tables answer]
+    empty -- no --> understand[understand: standalone question, parts, search phrases]
+    understand --> retrieve[retrieve: top 5 per phrase, max 10 candidates]
+    retrieve --> select[select: verdict per part]
+    select -- invalid once --> select
+    select -- nothing answerable --> merge
+    select -- answerable parts --> code[generate_code]
+    code --> execute[execute: Docker sandbox]
+    execute --> check{check}
+    check -- failed, retries left --> code
+    check -- ok or retries used --> merge[merge_status]
+    merge --> respond[respond: answer from facts, numbers checked]
+    understand -. LLM error .-> fail[fail: error state, cannot_answer]
+    retrieve -. Pinecone error .-> fail
+    execute -. sandbox unavailable .-> fail
+```
+
+- **Answer status is decided by code, not by the answer's wording.** Selection gives a verdict per
+  question part (answerable, missing data, ambiguous); the generated code reports each part as
+  answered or missing; a merge step turns both into `answered`, `partial` or `cannot_answer` and
+  stores it in the graph state.
+- **Answerability rules are shared by the selection and code prompts**: missing periods or entities,
+  conversions that need outside data, missing comparison values and ambiguous columns are reported
+  as missing, never estimated or interpolated.
+- **Generated code runs in a Docker container** with no network, a read-only copy of only the
+  selected tables, memory, CPU and process limits, no capabilities and a wall-clock timeout. Its
+  only output channel is a trusted `emit()` helper that turns empty values into "missing".
+- **Self-correction**: failed runs (errors, timeouts, malformed or incomplete output) go back to code
+  generation with feedback, up to `ANALYST_MAX_RETRIES` (default 2).
+- **Answers are written from facts and number-checked**: every number in the text must come from the
+  computed values; otherwise the answer is rebuilt from a template.
+- Follow-up questions are rewritten into standalone questions using the last four turns; the latest
+  message always wins.
+
 ## Known limitations
 
 - Borderless tables and headers placed above them may not be recognized reliably; plain numeric
@@ -426,6 +476,10 @@ graph TD;
   of the same document from multiple browser sessions is not supported.
 - Index cleanup failures can leave old-version records alongside the new version until another
   upload completes cleanup. The catalog assumes records were created by Octi.
+- Questions in the chat are not yet routed to the Analyst agent; it runs through its graph and the
+  offline test suite. The evaluation report and the test-question set are not included yet.
+- Generated code that silently uses a wrong row still yields a valid number no check can catch; a
+  four-turn window can carry over an entity the user did not mean.
 
 ## Credits
 

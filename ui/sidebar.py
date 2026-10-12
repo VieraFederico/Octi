@@ -16,6 +16,7 @@ import streamlit as st
 from services.settings import Settings
 from ui.documents import render_documents
 from ui.ingestion import is_streaming
+from ui.analysis import is_busy as analysis_busy
 from ui.icons import CHECK, WARNING, img_tag
 from ui.new_chat import request_new_chat
 
@@ -30,7 +31,7 @@ def current_view() -> str:
 
 def render_sidebar(settings: Settings) -> None:
     view = current_view()
-    disabled = is_streaming(st.session_state)
+    disabled = is_streaming(st.session_state) or analysis_busy(st.session_state)
     with st.sidebar:
         # Every `key` below becomes a `st-key-<key>` class that `assets/styles.css` targets.
         st.button("Octi", key="home", on_click=_select, args=(CHAT,), type="tertiary", help="Back to the chat", disabled=disabled)

@@ -37,7 +37,7 @@ def test_upload_pause_resume_and_history(start_app, monkeypatch):
     # Then
     assert not at.exception and len(runner.calls) == 2
     assert any("Indexed 1 table" in s.label for s in at.get("status"))
-    assert any("spec 02" in m.value for m in at.main.markdown)
+    assert sum(message.get("kind") == "analysis" for message in at.session_state["messages"]) == 2
 
 
 def test_duplicate_and_replace_modals(start_app, monkeypatch):

@@ -94,9 +94,10 @@ def test_question_follows_any_finished_upload_in_one_turn(start_app, runner_fact
     # When
     submit(at, text="What is revenue?")
     # Then
-    assert not at.exception and len(runner.calls) == 1 and len(at.chat_message) == 2
+    assert not at.exception and len(runner.calls) == 1 and len(at.chat_message) == 3
     assert "report.pdf" in " ".join(t.value for t in at.main.text)
-    assert any("spec 02" in m.value for m in at.chat_message[1].markdown)
+    assert at.session_state["messages"][-1]["kind"] == "analysis"
+    assert not any("spec 02" in m.value for m in at.main.markdown)
     assert at.session_state["messages"][1]["status"] == "finished"
     assert not at.chat_input[0].disabled and not any(b.disabled for b in at.sidebar.button)
     assert "ingestion-pdf" not in at.session_state
@@ -150,7 +151,7 @@ def test_both_pauses_resume_inside_the_run_message(start_app, runner_factory, mo
     at.button(key="ingestion-thread-" + choice).click().run()
     # Then
     assert not at.exception and runner.calls[-1] == ("resume", choice)
-    assert len(at.chat_message) == 2 and not at.chat_input[0].disabled
+    assert len(at.chat_message) == 3 and not at.chat_input[0].disabled
 
 
 def test_finished_summary_contains_all_cards_notes_and_survives_navigation(start_app, runner_factory):
@@ -163,7 +164,7 @@ def test_finished_summary_contains_all_cards_notes_and_survives_navigation(start
     # When
     submit(at)
     # Then
-    assert not at.exception and [e.label for e in at.expander] == ["Regional sales", "Costs"]
+    assert not at.exception and [e.label for e in at.expander if e.label != "Tables considered"] == ["Regional sales", "Costs"]
     markup = " ".join(e.value for e in at.get("html"))
     assert all(value in markup for value in ("and 5 more", "USD", "int64", "pages 4–5", "Revenue", "Skipped sales"))
     assert any("Pages 5, 8 and 11 contain images" in t.value for t in at.main.text)
@@ -174,7 +175,7 @@ def test_finished_summary_contains_all_cards_notes_and_survives_navigation(start
     at.sidebar.button(key="home").click().run()
     at.chat_input[0].set_value("hello").run()
     # Then
-    assert not at.exception and [e.label for e in at.expander] == ["Regional sales", "Costs"]
+    assert not at.exception and [e.label for e in at.expander if e.label != "Tables considered"] == ["Regional sales", "Costs"]
 
 
 @pytest.mark.parametrize("warn", [True, False])

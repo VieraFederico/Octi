@@ -126,7 +126,7 @@ def test_composer_accepts_only_pdf_files(start_app) -> None:
 
 
 def test_first_message_shows_history_and_pins_the_composer(start_app) -> None:
-    """VC-027: submit "hello" → logo and greeting gone, composer pinned, user "hello" then the spec-02 placeholder."""
+    """VC-027 superseded by VC-201: submitting text starts Analysis and retains the pinned composer."""
     at = start_app()
     at.chat_input[0].set_value("hello").run()
     assert not at.exception
@@ -135,7 +135,8 @@ def test_first_message_shows_history_and_pins_the_composer(start_app) -> None:
     assert roots_with_composer(at) == [BOTTOM]
     assert [message.name for message in at.chat_message] == ["user", "assistant"]
     assert texts[0] == "hello"
-    assert "spec 02" in texts[1]
+    assert "There are no tables in the library yet" in texts[1]
+    assert at.session_state["messages"][-1]["kind"] == "analysis"
 
 
 def test_library_view_shows_the_empty_state(start_app) -> None:

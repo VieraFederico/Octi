@@ -12,8 +12,10 @@ from typing import Any
 from uuid import uuid4
 
 from langchain_core.runnables import RunnableConfig
+from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
+from langgraph.types import Command
 from langsmith import trace
 from langsmith.run_helpers import get_current_run_tree, tracing_context
 from pydantic import BaseModel
@@ -25,8 +27,11 @@ from services.settings import Settings
 from services.tracing import make_langsmith_client
 
 OnUpdate = Callable[[str, dict[str, Any]], None]
-NODE_NAMES = ("library_check", "no_tables", "understand", "retrieve", "select", "generate_code",
-              "execute", "check", "merge_status", "respond", "template", "fail")
+NODE_NAMES = ("library_check", "no_tables", "understand", "retrieve", "select", "confirm_tables",
+              "generate_code", "execute", "check", "merge_status", "respond", "template", "fail")
+CONFIRMATION_REQUEST = "confirmation_request"  # set on the returned state while the run waits for the user
+# One saver for every run: a paused run's checkpoint must outlive the Streamlit rerun that started it.
+CHECKPOINTER = InMemorySaver()
 
 
 def mask_sandbox_output(payload: dict) -> dict:
@@ -73,12 +78,14 @@ def end_metadata(state: AnalystState) -> dict[str, Any]:
     return {"answer_status": state.get("answer_status"), "parts_total": len(plan.parts) if plan is not None else 0,
             "parts_answered": sum(part.outcome == "answered" for part in state.get("part_outcomes", [])),
             "attempts": state.get("code_attempts", 0), "selected_tables": len(nodes.selected_tables(state)),
-            "error_kind": error["kind"] if error is not None else None}
+            "error_kind": error["kind"] if error is not None else None,
+            "confirmation": state.get("confirmation") or "skipped"}
 
 
-def run_config(settings: Settings, question: str, window: Sequence[Turn], thread_id: str) -> RunnableConfig:
+def run_config(settings: Settings, question: str, window: Sequence[Turn], thread_id: str,
+               extra_tags: Sequence[str] = ()) -> RunnableConfig:
     """FR-239 start labels; recursion is bounded above the longest valid retry route."""
-    return {"run_name": f"Analysis: {question[:60]}", "tags": ["analysis"],
+    return {"run_name": f"Analysis: {question[:60]}", "tags": ["analysis", *extra_tags],
             "metadata": {"llm_model": settings.LLM_MODEL, "max_retries": settings.ANALYST_MAX_RETRIES,
                          "thread_id": thread_id, "window_turns": min(len(window), nodes.WINDOW_TURNS)},
             "configurable": {"thread_id": thread_id}, "run_id": uuid4(),
@@ -123,8 +130,17 @@ def route_after_select(state: AnalystState) -> str:
         return "fail"
     if state["selection_feedback"] and state["selection_attempts"] <= nodes.SELECTION_RETRIES:
         return "select"
+    return "confirm_tables" if _any_answerable(state) else "merge_status"
+
+
+def _any_answerable(state: AnalystState) -> bool:
     selection = state["selection"]
-    return "generate_code" if selection is not None and any(part.verdict == "answerable" for part in selection.parts) else "merge_status"
+    return selection is not None and any(part.verdict == "answerable" for part in selection.parts)
+
+
+def route_after_confirm(state: AnalystState) -> str:
+    """Cancel, or no table left for any part, skips code generation (spec 03 FR-317, FR-318)."""
+    return "generate_code" if _any_answerable(state) else "merge_status"
 
 
 def route_after_generate(state: AnalystState) -> str:
@@ -132,7 +148,7 @@ def route_after_generate(state: AnalystState) -> str:
 
 
 def build_graph(deps: AnalystDeps) -> CompiledStateGraph:
-    """No pause in spec 02; all retry inputs are state fields ready for spec 03's confirmation pause."""
+    """The Analyst graph; `confirm_tables` may pause after `select`, so runs are checkpointed."""
     builder = StateGraph(AnalystState)
     for name in NODE_NAMES:
         builder.add_node(name, _bind(name, deps))
@@ -140,7 +156,8 @@ def build_graph(deps: AnalystDeps) -> CompiledStateGraph:
     builder.add_conditional_edges("library_check", route_after_library, ["fail", "no_tables", "understand"])
     builder.add_conditional_edges("understand", lambda state: _after(state, "retrieve"), ["fail", "retrieve"])
     builder.add_conditional_edges("retrieve", lambda state: _after(state, "select"), ["fail", "select"])
-    builder.add_conditional_edges("select", route_after_select, ["fail", "select", "generate_code", "merge_status"])
+    builder.add_conditional_edges("select", route_after_select, ["fail", "select", "confirm_tables", "merge_status"])
+    builder.add_conditional_edges("confirm_tables", route_after_confirm, ["generate_code", "merge_status"])
     builder.add_conditional_edges("generate_code", route_after_generate, ["fail", "execute", "check"])
     builder.add_conditional_edges("execute", lambda state: _after(state, "check"), ["fail", "check"])
     builder.add_conditional_edges("check", lambda state: "generate_code" if state["last_failure"] is not None
@@ -149,19 +166,50 @@ def build_graph(deps: AnalystDeps) -> CompiledStateGraph:
     builder.add_conditional_edges("respond", lambda state: END if state.get("answer") else "template", [END, "template"])
     for name in ("no_tables", "template", "fail"):
         builder.add_edge(name, END)
-    return builder.compile()
+    return builder.compile(checkpointer=CHECKPOINTER)
 
 
 def run_analysis(
-    question: str, window: Sequence[Turn], deps: AnalystDeps, *, on_update: OnUpdate | None = None,
-    thread_id: str | None = None,
+    question: str, window: Sequence[Turn], deps: AnalystDeps, confirm_tables: bool, *,
+    on_update: OnUpdate | None = None, thread_id: str | None = None, extra_tags: Sequence[str] = (),
 ) -> AnalystState:
-    """Stream node updates, return final state; dependencies and raw table data stay outside it."""
+    """Stream node updates, return the state; dependencies and raw table data stay outside it.
+
+    With `confirm_tables` the run may stop after `select`: the returned state then holds
+    `CONFIRMATION_REQUEST` (the pause payload) and `resume_analysis` continues the same thread.
+    """
     state: AnalystState = {"question": question, "window": list(window[-nodes.WINDOW_TURNS:]),
         "plan": None, "candidates": [], "selection": None, "selection_attempts": 0, "selection_feedback": [],
         "code_attempts": 0, "code_draft": None, "sandbox_result": None, "last_failure": None,
-        "attempts_history": [], "part_outcomes": [], "answer_status": None, "answer": None, "error": None}
-    config = run_config(deps.settings, question, state["window"], thread_id or uuid4().hex)
+        "attempts_history": [], "part_outcomes": [], "answer_status": None, "answer": None, "error": None,
+        "confirmation": None if confirm_tables else "skipped"}
+    return _stream(deps, dict(state), state, thread_id or uuid4().hex, on_update, extra_tags)
+
+
+def resume_analysis(
+    thread_id: str, reply: dict[str, Any], deps: AnalystDeps, *,
+    on_update: OnUpdate | None = None, extra_tags: Sequence[str] = (),
+) -> AnalystState:
+    """Continue a paused run with the user's reply: `{"action": "calculate", "tables": {part: [ids]}}`
+    or `{"action": "cancel"}`. An unknown action, or a thread that is not paused, raises `ValueError`."""
+    if reply.get("action") not in ("calculate", "cancel"):
+        raise ValueError(f"Unknown confirmation action {reply.get('action')!r}.")
+    snapshot = build_graph(deps).get_state({"configurable": {"thread_id": thread_id}})
+    if not snapshot.interrupts:
+        raise ValueError(f"Analysis {thread_id!r} is not waiting for a confirmation.")
+    return _stream(deps, Command(resume=reply), dict(snapshot.values), thread_id, on_update, extra_tags)
+
+
+def abandon_analysis(thread_id: str) -> None:
+    """Drop a paused run's checkpoint (New chat while it waits)."""
+    CHECKPOINTER.delete_thread(thread_id)
+
+
+def _stream(deps: AnalystDeps, payload: Any, state: AnalystState, thread_id: str,
+            on_update: OnUpdate | None, extra_tags: Sequence[str]) -> AnalystState:
+    """One graph call inside its own root trace; a finished run's checkpoint is dropped."""
+    question = state["question"]
+    config = run_config(deps.settings, question, state["window"], thread_id, extra_tags)
     graph = build_graph(deps)
     with tracing_scope(deps.settings, deps.tracing_client) as client:
         root_scope = trace(config["run_name"], inputs={"question": question, "window_turns": len(state["window"])},
@@ -170,12 +218,18 @@ def run_analysis(
         with root_scope as root:
             # The root has the FR-239 name/id; the compiled graph is its child with a separate id.
             graph_config = {**config, "run_name": "Analyst graph", "run_id": uuid4()}
-            for chunk in graph.stream(dict(state), graph_config, stream_mode="updates"):
+            for chunk in graph.stream(payload, graph_config, stream_mode="updates"):
                 for name, update in chunk.items():
-                    if update is not None:
+                    if name != "__interrupt__" and update is not None:
                         state.update(update)
                         if on_update is not None:
                             on_update(name, update)
+            interrupts = graph.get_state(graph_config).interrupts
+            if interrupts:
+                state[CONFIRMATION_REQUEST] = interrupts[0].value
+            else:
+                state.pop(CONFIRMATION_REQUEST, None)
+                CHECKPOINTER.delete_thread(thread_id)
             if root is not None:
                 root.add_metadata(end_metadata(state))
                 root.end(outputs=dict(state))

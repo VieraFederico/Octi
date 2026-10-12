@@ -9,7 +9,7 @@ from langsmith import Client
 from agents.analyst.graph import mask_sandbox_output, run_analysis
 from agents.analyst.schemas import CodeDraft, FinalAnswer, PartSelection, TableSelection
 from services.sandbox import SandboxResult
-from tests.analyst_stubs import TraceRecordingSession, analyst_deps, catalog_entry, query_plan
+from tests.stubs import TraceRecordingSession, analyst_deps, analyst_catalog_entry as catalog_entry, query_plan
 
 
 def test_traced_run_masks_every_payload_and_updates_root_metadata(make_settings, tmp_path) -> None:
@@ -28,7 +28,7 @@ def test_traced_run_masks_every_payload_and_updates_root_metadata(make_settings,
     deps = replace(deps, tracing_client=client)
 
     # When
-    state = run_analysis("Question", [], deps, thread_id="analysis-smoke")
+    state = run_analysis("Question", [], deps, False, thread_id="analysis-smoke")
     wait_for_all_tracers()
 
     # Then
@@ -52,7 +52,7 @@ def test_tracing_off_never_builds_a_tracing_client(make_settings, tmp_path, monk
     deps, _, _ = analyst_deps(make_settings(), tmp_path, [], [], entries=[])
 
     # When
-    state = run_analysis("Question", [], deps)
+    state = run_analysis("Question", [], deps, False)
 
     # Then
     assert state["answer_status"] == "cannot_answer" and state["error"] is None

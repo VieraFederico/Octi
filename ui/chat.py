@@ -1,12 +1,10 @@
 """The Chat view: empty state, message history and the composer (spec FR-020 … FR-024).
 
 The conversation lives in `st.session_state`, so each browser session has its own and it disappears
-when the tab is closed (BR-008). PDF replies are structured ingestion messages; questions retain
-the spec 02 placeholder until the Analyst is wired.
+when the tab is closed (BR-008). PDFs and questions have durable ingestion and Analysis messages.
 
 The composer bar holds the composer and, over its right end, the chat-model picker (D-037). The
-choice is kept in `st.session_state[MODEL_PICKER]`; the Analyst agent (spec 02) reads it through
-`chosen_model()`.
+choice is kept in `st.session_state[MODEL_PICKER]`; agents use Settings.LLM_MODEL (D-091).
 """
 
 from typing import Any, TypedDict
@@ -16,6 +14,7 @@ import streamlit as st
 from ui.logo import LOGO_DIR, load_frames, logo_html
 from ui.ingestion import BUSY_HINT, is_busy, render_run_message
 from ui.upload import PENDING
+from ui.analysis import ACTIVE as ACTIVE_ANALYSIS, is_busy as analysis_busy, new_message, queue_analysis, render_analysis_message
 
 MESSAGES = "messages"  # session-state key of the conversation
 MODEL_PICKER = "model-picker"  # session-state key of the chosen chat model (also its CSS class hook)
@@ -24,7 +23,7 @@ PICKER_WIDTH_PX = 170  # selectboxes take pixels or "stretch", not "content"; fi
 GREETING = "Hi, I'm Octi"
 HINT = "Attach a PDF with **+**, or ask a question about your tables."
 COMPOSER_PLACEHOLDER = "Ask about your tables…"
-QUESTION_PLACEHOLDER = "I can't answer questions yet: the Analyst agent arrives in spec 02."
+QUESTION_PLACEHOLDER = ""  # compatibility with ingestion/upload; chat queues the real Analysis reply
 
 
 class Message(TypedDict):
@@ -46,6 +45,8 @@ def render_chat(model_choices: list[str]) -> None:
             with st.chat_message(message["role"]):
                 if message.get("kind") == "ingestion":
                     render_run_message(message)
+                elif message.get("kind") == "analysis":
+                    render_analysis_message(message)
                 else:
                     st.markdown(message["content"])
                     for name in message.get("file_names", []):
@@ -64,7 +65,9 @@ def render_chat(model_choices: list[str]) -> None:
         if uploads:
             st.session_state[PENDING] = {**uploads[0], "text": text}
         else:
-            messages.extend(reply_to(text, []))
+            replies = reply_to(text, [])
+            messages.extend(replies)
+            st.session_state[ACTIVE_ANALYSIS] = replies[-1]
         st.rerun()  # draw the new state: history instead of the empty state
 
 
@@ -79,20 +82,44 @@ def submission_parts(submission: Any) -> tuple[str, list[dict[str, Any]]]:
 
 
 def reply_to(text: str, file_names: list[str]) -> list[Message]:
-    """Text-only replies retain the question placeholder; PDFs use the pending-upload seam."""
+    """A user question followed by a queued Analysis message; PDFs use the pending-upload seam."""
     user_parts = ([text] if text else []) + [f"Attached `{name}`" for name in file_names]
-    reply_parts = [QUESTION_PLACEHOLDER] if text else []
     return [
         {"role": "user", "content": "\n\n".join(user_parts)},
-        {"role": "assistant", "content": "\n\n".join(reply_parts)},
+        new_message(text),
     ]
+
+
+def queue_finished_upload_question(state) -> None:
+    """Handoff after any finished upload, before sidebar controls render; never repeat a turn."""
+    messages = state.get(MESSAGES, [])
+    if state.get(ACTIVE_ANALYSIS) not in messages:
+        state.pop(ACTIVE_ANALYSIS, None)
+    if is_busy(state) or analysis_busy(state) or state.get(PENDING) or state.get("upload-confirming"):
+        return
+    # Spec 01 still imports its placeholder seam. Suppress that legacy output without editing it.
+    for message in messages:
+        if message.get("kind") == "ingestion" and message.get("status") == "finished":
+            message["text"] = ""
+    messages[:] = [message for message in messages if message.get("role") != "assistant"
+                   or message.get("kind") or message.get("content", "").strip()]
+    for index in range(len(messages) - 1, -1, -1):
+        user = messages[index]
+        if user.get("role") != "user":
+            continue
+        if user.get("file_names") and user.get("content", "").strip() and not any(
+            message.get("kind") == "analysis" for message in messages[index + 1:]
+        ):
+            queue_analysis(state, user["content"])
+            state["view"] = "Chat"
+        break
 
 
 def _composer_bar(model_choices: list[str]) -> Any:
     """The composer with the model picker laid over its right end by `assets/styles.css`."""
     with st.container(key="composer-bar"):
         # accept_file + file_type: the "+" button only accepts PDFs (FR-024).
-        busy = is_busy(st.session_state)
+        busy = is_busy(st.session_state) or analysis_busy(st.session_state)
         submission = st.chat_input(BUSY_HINT if busy else COMPOSER_PLACEHOLDER, accept_file=True,
                                    file_type=["pdf"], key="composer", disabled=busy)
         # filter_mode=None: a plain dropdown; without it Streamlit lets the user type into the picker (D-045).

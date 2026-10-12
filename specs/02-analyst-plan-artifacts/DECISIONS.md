@@ -194,3 +194,25 @@ Project-wide decisions are in the root `DECISIONS.md` (D-085 … D-116 for this 
 - **Rejected:** ending an invalid draft as an infrastructure failure; inventing replacement code.
 - **Consequences:** every attempted draft consumes one attempt, even when no container ran.
   No new failure-kind literal is needed; answer status remains computed by plain code.
+
+## S02-D-020: Durable Analysis message and lazy evidence (Iteration 4)
+- **Context:** the UI message/session contract was not fixed by the plan.
+- **Decision:** student-approved ingestion-style message with question/thread_id/status/lines/values;
+  `active-analysis` marks a queued/running run. Window is derived from the last four finished
+  Analysis messages only. Stateful Show data expanders load frames into Streamlit's data cache,
+  keyed by thread/table, outside message/graph state.
+- **Rejected:** keeping full frames in history; reading data while folded; a separate memory store.
+- **Consequences:** reruns preserve evidence and New chat clears memory with history. Badge colors
+  use the existing theme's green/peach/red; completed progress is collapsed.
+
+## S02-D-021: Chat-side PDF question handoff and real spec 01 names (Iteration 4)
+- **Context:** spec 01 still renders/imports QUESTION_PLACEHOLDER in ingestion/upload code; those
+  source files remain protected. Both prerequisite iteration records are committed.
+- **Decision:** approved ui/chat.py integration uses a pre-sidebar app handoff after ingestion or
+  upload modals finish. The latest PDF user message supplies its question; a following Analysis
+  message prevents duplicate execution. The imported placeholder becomes an empty compatibility
+  constant; completed ingestion text is cleared in message data to suppress its legacy reply.
+  Use real `catalog`, `catalog-loaded`, `ingestion-settings`, `render_table_card` seams (S01 context).
+- **Rejected:** editing ingestion/upload source; running analysis while ingestion is paused.
+- **Consequences:** success/cancel/failure all proceed to Analysis; sidebar/composer disabling uses
+  active-analysis. Superseded placeholder tests now expect the real Analysis message.

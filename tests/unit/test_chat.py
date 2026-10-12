@@ -17,13 +17,13 @@ class MemoryUpload:
     getvalue = read
 
 
-def test_text_gets_the_spec_02_placeholder() -> None:
-    """VC-027: text → user message with the text, then an assistant placeholder mentioning spec 02."""
+def test_text_queues_an_analysis_message() -> None:
+    """VC-027 superseded by VC-201: text queues the actual Analysis flow after the user message."""
     user, assistant = reply_to("hello", [])
     assert user == {"role": "user", "content": "hello"}
     assert assistant["role"] == "assistant"
-    assert "spec 02" in assistant["content"]
-    assert "spec 01" not in assistant["content"]
+    assert assistant["kind"] == "analysis" and assistant["status"] == "queued"
+    assert assistant["question"] == "hello" and assistant["content"] == ""
 
 
 def test_submission_parts_keep_pdf_bytes_in_memory() -> None:

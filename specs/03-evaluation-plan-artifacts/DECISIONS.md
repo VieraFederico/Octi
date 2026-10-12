@@ -34,3 +34,15 @@ Append-only. Project-wide decisions live in the root `DECISIONS.md` (D-106 … D
   …). Before the live run, the student checks the real names in the Library and the YAML is updated.
 - **Rejected:** none yet; open options for the student and the spec tab in the record.
 - **Consequences:** `tables_correct` may report ✗ for a correct selection until the names match.
+
+## S03-D-004: The `eval` tag through a `run_analysis` argument (before Iteration 1)
+
+- **Context:** FR-307 needs every evaluation run tagged `eval` inside an `octi-eval` experiment;
+  spec 02's `run_analysis` opens its own root trace with fixed tags `["analysis"]`.
+- **Decision (student):** Iteration 1 adds an optional `extra_tags` argument to `run_analysis`
+  next to `confirm_tables` (one spec 02 edit, reported to the spec tab); Iteration 2b's
+  `scripts/run_eval.py` passes `["eval"]` and uses `langsmith.evaluate` with
+  `experiment_prefix="octi-eval"`. Order: 2a → 1 → 2b → 3, both after spec 02 Iteration 4.
+- **Rejected:** a tracing-context tag from the caller (relies on unverified library behaviour);
+  an own scoring loop with per-run feedback (changes FR-307's meaning).
+- **Consequences:** spec 02 §7's entry point gains `extra_tags`; the spec tab folds it into spec 03 §7.

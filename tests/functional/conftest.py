@@ -31,6 +31,8 @@ def start_app(monkeypatch: pytest.MonkeyPatch, make_settings) -> Callable[..., A
     monkeypatch.setattr("services.llm.make_embeddings", explode)
     # Session catalog reads also stay offline; individual UI tests can seed or override them.
     monkeypatch.setattr("ui.catalog.load_catalog", lambda _settings: [])
+    from tests.stubs import StubAnalysisRunner
+    monkeypatch.setattr("ui.analysis.run_analysis", StubAnalysisRunner())
     # Startup checks use a ready local fake; sandbox failure tests override this factory.
     monkeypatch.setattr("services.sandbox.make_docker_client", lambda: SimpleNamespace(
         ping=lambda: True, images=SimpleNamespace(get=lambda _name: object()), close=lambda: None,
