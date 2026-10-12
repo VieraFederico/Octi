@@ -16,5 +16,8 @@ pymupdf==1.28.2
 # Spec 02: Analyst agent sandbox (D-086).
 docker==7.1.0
 
+# Spec 03: test questions file (already installed through langchain-core).
+PyYAML==6.0.3
+
 # Tests
 pytest==9.1.1

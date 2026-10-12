@@ -1,0 +1,90 @@
+# The 10 test questions over the two sample PDFs (data/sample_pdfs/).
+# Every expected value is recomputed from scripts/make_sample_pdfs.py's constants by
+# tests/unit/test_eval_questions.py. `expected_tables` are Table names as ingestion names them.
+
+- id: q01
+  question: "What was ACME's net revenue in 2023?"
+  category: single_table
+  expected_status: answered
+  expected_values:
+    - {name: net_revenue_2023, value: 1288.7}
+  expected_tables: ["Income summary"]
+  expected_answer: "ACME's net revenue in 2023 was USD 1,288.7 million (Income summary, acme-annual-report-2023.pdf, page 1)."
+
+- id: q02
+  question: "Using the monthly sales table, what were ACME's total net sales in 2022, in USD millions?"
+  category: scale_conversion
+  expected_status: answered
+  expected_values:
+    - {name: net_sales_2022_usd_millions, value: 1322.0}
+  expected_tables: ["Monthly net sales"]
+  expected_answer: "The twelve months of 2022 add up to USD 1,322,000.0 thousand, that is USD 1,322.0 million (Monthly net sales, pages 4-5)."
+
+- id: q03
+  question: "¿Cuál fue la tasa de desempleo de Cuyo en 2023?"
+  category: spanish
+  expected_status: answered
+  expected_values:
+    - {name: tasa_de_desempleo_cuyo_2023, value: 5.4, unit: percent}
+  expected_tables: ["Indicadores del mercado laboral por región"]
+  expected_answer: "La tasa de desempleo de Cuyo en 2023 fue 5,4 % (Indicadores del mercado laboral por región, informe-regional-2024.pdf, página 1)."
+
+- id: q04
+  question: "What share of ACME's net revenue did R&D expenses represent in 2023?"
+  category: multi_table
+  expected_status: answered
+  expected_values:
+    - {name: rd_share_of_net_revenue_2023, value: 8.76, unit: percent}
+  expected_tables: ["Income summary", "Research and development expenses and staff"]
+  expected_answer: "In 2023 R&D expenses of USD 112.9 million were 8.76 % of the USD 1,288.7 million net revenue (Research and development expenses and staff; Income summary; page 1)."
+
+- id: q05
+  question: "What were ACME's net sales per inhabitant in Patagonia in 2023, in USD?"
+  category: multi_table_cross_pdf
+  expected_status: answered
+  expected_values:
+    - {name: net_sales_per_inhabitant_patagonia_2023_usd, value: 82.38}
+  expected_tables: ["Net sales by region and market share", "Población por región"]
+  expected_answer: "Patagonia's 2023 net sales of USD 239.8 million over 2,910.8 thousand inhabitants give about USD 82.38 per inhabitant (Net sales by region and market share, ACME page 2; Población por región, informe page 1)."
+
+- id: q06
+  question: "What was ACME's carbon footprint in 2023?"
+  category: no_related_table
+  expected_status: cannot_answer
+  expected_values: []
+  expected_tables: []
+  expected_answer: "No table holds emissions or carbon data; the documents cover revenue, R&D, regional sales, staff, population and labour indicators."
+
+- id: q07
+  question: "What was ACME's net income in 2019?"
+  category: missing_year
+  expected_status: cannot_answer
+  expected_values: []
+  expected_tables: []
+  expected_answer: "The income summary covers 2021 to 2023 only, so net income for 2019 is not available."
+
+- id: q08
+  question: "What were ACME's R&D expenses in 2023, and how much did it spend on advertising in 2023?"
+  category: partial
+  expected_status: partial
+  expected_values:
+    - {name: rd_expenses_2023, value: 112.9}
+  expected_tables: ["Research and development expenses and staff"]
+  expected_answer: "R&D expenses in 2023 were USD 112.9 million (page 1); advertising spending is not reported in any table."
+
+- id: q09
+  question: "What was ACME's market share in Patagonia in 2023, and how does it compare with ACME's national market share?"
+  category: missing_comparison
+  expected_status: partial
+  expected_values:
+    - {name: market_share_patagonia_2023, value: 13.1, unit: percent}
+  expected_tables: ["Net sales by region and market share"]
+  expected_answer: "ACME's market share in Patagonia in 2023 was 13.1 % (page 2); the table has no national row, so the comparison cannot be made."
+
+- id: q10
+  question: "What was ACME's revenue in 2022?"
+  category: ambiguous
+  expected_status: cannot_answer
+  expected_values: []
+  expected_tables: []
+  expected_answer: "The income summary reports both gross (USD 1,415.8 million) and net (USD 1,322.0 million) revenue for 2022, and the question does not say which one."

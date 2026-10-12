@@ -1,4 +1,4 @@
-# CONTEXT — Spec 01 Ingestion agent (after Iteration 6)
+# CONTEXT — Spec 01 Ingestion implementation and final verification
 
 This is the current codebase handoff. The spec and plan remain the authority; implementation
 choices live in this directory's DECISIONS.md. Staged verification (D-118) applies.
@@ -20,7 +20,14 @@ choices live in this directory's DECISIONS.md. Staged verification (D-118) appli
   streaming; New chat at a pause closes the run's data store and discards the runtime.
 - Catalog loads once per session; an upload retries a failed load before any run. An indexed result
   updates the session catalog directly. A cleanup warning keeps possible old-version leftovers.
-- Not yet: final VC-by-VC verification, browser/manual and live checks, README updates (Iteration 7).
+- Iteration 7: deferred graph and UI verification tests are implemented, including both upload
+  modals, all pause choices, summaries/history, busy controls, catalog recovery and checkpoint limits.
+  The graph declares its specified conditional destinations so its Mermaid export is complete.
+  README documents usage, design choices, the exported workflow, sample regeneration and limitations.
+- `verification.md` maps all 82 active requirements and named test evidence. The isolated live
+  ingestion test is prepared; the student has not run live/browser/performance checks (VC-164/166).
+  Full offline suite is green: 724 passed, 2 deselected in 60.29 s. The under-60-second target
+  (NFR-103) was missed by 0.29 s and remains unconfirmed. Final acceptance awaits those checks.
 
 ## File map
 Ingestion implementation:
@@ -69,6 +76,12 @@ Tests:
 - tests/unit/test_catalog_ui.py, test_upload.py, test_table_card.py, test_ingestion_ui.py — new smoke tests.
 - tests/unit/test_chat.py, test_documents.py, test_new_chat.py — chat and existing sidebar/modal checks.
 - tests/functional/test_ingestion_flow.py, test_library.py — new offline AppTest smoke flows.
+- tests/unit/test_ingestion_final_graph.py — deferred refusal, oversize, checkpoint, outage and export checks.
+- tests/functional/test_ingestion_verification.py — complete deferred upload/catalog/run UI scenarios.
+- tests/unit/test_readme.py — product documentation and exact compiled Mermaid export checks.
+- tests/live/test_ingestion_live.py — student-run real ingestion shape check in isolated storage (S01-D-025).
+- README.md — shipped product usage, setup, architecture, design choices, graph and known limitations.
+- specs/01-ingestion-plan-artifacts/verification.md — every requirement/VC and its named test evidence.
 - tests/functional/conftest.py — fake catalog and ready sandbox factory; failure tests can override it.
 - Existing functional shell/modal/error-screen tests remain regression checks.
 - tests/analyst_stubs.py and spec 02 files belong to the concurrent implementation, not this iteration.
@@ -158,7 +171,8 @@ Sample data (scripts/make_sample_pdfs.py):
 - Pure extraction uses 1-based pages and geometric cell spans; ambiguous 1.234 uses English style.
   Whole numeric values outside signed int64 stay text; a column converts all-or-nothing.
 - Services remain agent-agnostic; graph/meaning logic remains inside agents/ingestion (D-084).
-- Code/docs use neutral English. Keep LF line endings (D-044). No README edits until Iteration 7.
+- Code/docs use neutral English. Keep LF line endings (D-044). Verification records stay separate
+  from the product README.
 
 ## Commands
 From PowerShell, use the existing WSL virtual environment (no installation):
@@ -170,7 +184,8 @@ From PowerShell, use the existing WSL virtual environment (no installation):
 - Live tests and the real app are run by the student only.
 
 ## Known gaps
-- See iterations/05-graph-pauses-tracing.md and 06-chat-and-catalog-ui.md for deferred VCs (D-118).
+- Final tests now implement the deferred lists from Iterations 5 and 6 (D-118); verification.md
+  records executed evidence and the remaining live/manual checks without marking them passed.
 - Browser clicks in the local component, real attachments and 375/1280 px layout checks are manual
   student checks in Iteration 7; AppTest cannot attach PDFs or execute component JavaScript.
 - Step-4 cleanup warnings retain possible old entries in the session; successful re-upload cleans up.

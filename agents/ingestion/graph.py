@@ -202,14 +202,15 @@ def build_graph(deps: IngestionDeps) -> CompiledStateGraph:
     for name in NODE_NAMES:
         builder.add_node(name, _bind(getattr(nodes, name), deps))
     builder.add_edge(START, "load_pdf")
-    builder.add_conditional_edges("load_pdf", route_after_load)
-    builder.add_conditional_edges("extract_tables", route_after_extract)
-    builder.add_conditional_edges("ask_unreadable", route_after_ask_unreadable)
-    builder.add_conditional_edges("collect_context", route_after_context)
-    builder.add_conditional_edges("enrich", route_after_enrich)
-    builder.add_conditional_edges("validate", route_after_validate)
-    builder.add_conditional_edges("next_table", route_after_next_table)
-    builder.add_conditional_edges("ask_skipped", route_after_ask_skipped)
+    # Explicit destinations make the compiled diagram reflect the same routes execution uses.
+    builder.add_conditional_edges("load_pdf", route_after_load, [END, "extract_tables"])
+    builder.add_conditional_edges("extract_tables", route_after_extract, ["ask_unreadable", "collect_context"])
+    builder.add_conditional_edges("ask_unreadable", route_after_ask_unreadable, [END, "collect_context"])
+    builder.add_conditional_edges("collect_context", route_after_context, ["index", "enrich"])
+    builder.add_conditional_edges("enrich", route_after_enrich, [END, "validate"])
+    builder.add_conditional_edges("validate", route_after_validate, ["enrich", "next_table"])
+    builder.add_conditional_edges("next_table", route_after_next_table, ["enrich", "ask_skipped", "index"])
+    builder.add_conditional_edges("ask_skipped", route_after_ask_skipped, [END, "index"])
     builder.add_edge("index", END)
     return builder.compile(checkpointer=InMemorySaver())
 

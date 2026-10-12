@@ -68,3 +68,34 @@ def test_every_requirement_is_pinned() -> None:
     dependencies = [line.strip() for line in lines if line.strip() and not line.strip().startswith("#")]
     assert dependencies
     assert [line for line in dependencies if "==" not in line] == []
+
+
+def test_ingestion_documentation_and_exported_graph_are_present(make_settings) -> None:
+    """VC-162: ingestion setup, storage, graph and limitations are documented for users."""
+    # Given / When
+    text = README
+    # Then
+    for phrase in ("INGESTION_MAX_RETRIES", "AGPL-3.0", "Parquet", "38 KB", "fetch_by_metadata",
+                   "python -m scripts.make_sample_pdfs", "## Known limitations", "```mermaid"):
+        assert phrase in text
+    graph = text.split("```mermaid", 1)[1].split("```", 1)[0]
+    for node in ("load_pdf", "extract_tables", "ask_unreadable", "collect_context", "enrich",
+                 "validate", "next_table", "ask_skipped", "index"):
+        assert node in graph
+    from agents.ingestion.graph import build_graph
+    from agents.ingestion.state import IngestionDeps
+    from tests.stubs import FakeEmbeddings, FakePineconeIndex
+    exported = build_graph(IngestionDeps(make_settings(), FakeEmbeddings(), FakePineconeIndex())).get_graph().draw_mermaid()
+    assert graph.strip() == exported.strip()
+    for limitation in ("borderless", "numeric headers", "headerless", "1.234", "English", "scanned"):
+        assert limitation.lower() in " ".join(text.lower().split())
+
+
+def test_ingestion_status_and_usage_describe_the_shipped_ui() -> None:
+    """VC-162: the reader learns how uploads, confirmations, pauses and the Library work."""
+    # Given / When
+    text = README
+    # Then
+    assert "The two agents are\nnot built yet" not in text
+    for phrase in ("Open in library", "Cancel ingestion", "Replace", "Keep", "Show more", "View all"):
+        assert phrase in text

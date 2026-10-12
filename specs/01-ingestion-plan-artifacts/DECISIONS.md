@@ -294,3 +294,13 @@ ordinary links (open a new session and discard the paused run).
 the student checks browser clicks in the final iteration. User-approved edits also extend
 shared ui/chat.py and tests/stubs.py; spec 02 files are not edited.
 **Status**: accepted by the student (2026-10-11).
+
+## S01-D-025: The live ingestion test uses isolated storage (Iteration 7)
+**Context**: The live shape test must clean up without replacing a sample already in the library.
+**Decision**: Give each test a unique `octi-ingestion-test-<uuid>` namespace and pytest's temporary
+Table store. Run the real graph with real clients; clean deterministic and checkpoint-assembled
+ids in that namespace in `finally`, and remove temporary Parquet files.
+**Rejected**: the configured catalog and Table store, which could overwrite the user's version.
+**Consequences**: Model output wording is not asserted. A failed test cannot delete configured
+library records. The student runs live checks; offline collection does not load real settings.
+**Status**: accepted by the student (2026-10-11).
