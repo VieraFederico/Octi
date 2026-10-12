@@ -13,7 +13,7 @@ from eval.scoring import (
     values_correct,
     write_results,
 )
-from tests.analyst_stubs import catalog_entry
+from tests.stubs import analyst_catalog_entry as catalog_entry
 
 
 def question(**overrides) -> Question:

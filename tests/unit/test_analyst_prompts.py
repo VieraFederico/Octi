@@ -33,7 +33,7 @@ from agents.analyst.schemas import (
     TableSource,
     Turn,
 )
-from tests.analyst_stubs import catalog_entry, query_plan
+from tests.stubs import analyst_catalog_entry as catalog_entry, query_plan
 
 ALL_PROMPTS = {
     "understand": UNDERSTAND_PROMPT,

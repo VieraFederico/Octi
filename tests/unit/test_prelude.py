@@ -17,7 +17,7 @@ from agents.analyst.prelude import (
     prelude_source,
 )
 from agents.analyst.schemas import EmittedPart
-from tests.analyst_stubs import catalog_entry
+from tests.stubs import analyst_catalog_entry as catalog_entry
 
 
 def test_make_aliases_builds_unique_identifiers_in_order() -> None:

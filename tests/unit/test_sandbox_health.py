@@ -5,7 +5,7 @@ from dataclasses import replace
 import pytest
 
 from scripts.check_services import main
-from tests.analyst_stubs import FakeDockerClient
+from tests.stubs import FakeDockerClient
 from tests.stubs import healthy_clients
 
 

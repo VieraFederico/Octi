@@ -42,7 +42,7 @@ from agents.analyst.schemas import (
     TableSelection,
     TableSource,
 )
-from tests.analyst_stubs import query_plan
+from tests.stubs import query_plan
 
 CANDIDATE = "aaaaaaaaaaaaaaaa-p1-t1"
 

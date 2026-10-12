@@ -2,7 +2,7 @@
 
 from agents.analyst.schemas import QueryPlan
 from agents.ingestion.schemas import CatalogEntry
-from tests.analyst_stubs import catalog_entry, query_plan
+from tests.stubs import analyst_catalog_entry as catalog_entry, query_plan
 
 
 def test_catalog_entry_defaults_are_a_valid_entry() -> None:

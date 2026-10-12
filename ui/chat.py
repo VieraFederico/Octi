@@ -14,7 +14,10 @@ import streamlit as st
 from ui.logo import LOGO_DIR, load_frames, logo_html
 from ui.ingestion import BUSY_HINT, is_busy, render_run_message
 from ui.upload import PENDING
-from ui.analysis import ACTIVE as ACTIVE_ANALYSIS, is_busy as analysis_busy, new_message, queue_analysis, render_analysis_message
+from ui.analysis import (
+    ACTIVE as ACTIVE_ANALYSIS, is_busy as analysis_busy, is_paused as analysis_paused, new_message, queue_analysis,
+    render_analysis_message, render_confirm_toggle,
+)
 
 MESSAGES = "messages"  # session-state key of the conversation
 MODEL_PICKER = "model-picker"  # session-state key of the chosen chat model (also its CSS class hook)
@@ -40,6 +43,7 @@ def render_chat(model_choices: list[str]) -> None:
     if messages:
         # Draw the disabled composer before the blocking graph call can start streaming.
         with st.bottom:
+            render_confirm_toggle()
             submission = _composer_bar(model_choices)
         for message in messages:
             with st.chat_message(message["role"]):
@@ -59,6 +63,7 @@ def render_chat(model_choices: list[str]) -> None:
             submission = _composer_bar(model_choices)
             with st.container(key="empty-hint"):
                 st.markdown(HINT)
+            render_confirm_toggle()
 
     if submission:
         text, uploads = submission_parts(submission)
@@ -119,7 +124,7 @@ def _composer_bar(model_choices: list[str]) -> Any:
     """The composer with the model picker laid over its right end by `assets/styles.css`."""
     with st.container(key="composer-bar"):
         # accept_file + file_type: the "+" button only accepts PDFs (FR-024).
-        busy = is_busy(st.session_state) or analysis_busy(st.session_state)
+        busy = is_busy(st.session_state) or analysis_busy(st.session_state) or analysis_paused(st.session_state)
         submission = st.chat_input(BUSY_HINT if busy else COMPOSER_PLACEHOLDER, accept_file=True,
                                    file_type=["pdf"], key="composer", disabled=busy)
         # filter_mode=None: a plain dropdown; without it Streamlit lets the user type into the picker (D-045).

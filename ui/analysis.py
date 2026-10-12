@@ -86,10 +86,14 @@ def _run(message: dict[str, Any], box: Any) -> None:
             with box:
                 st.text(line)
 
+    reply = message.pop("reply", None)
     try:
         deps = make_deps(settings, catalog=state.get(CATALOG, []) if state.get(LOADED) else None)
-        values = run_analysis(message["question"], build_window(state["messages"]), deps,
-                              on_update=on_update, thread_id=message["thread_id"])
+        if reply is None:
+            values = run_analysis(message["question"], build_window(state["messages"]), deps,
+                                  state.get(CONFIRM_TABLES, True), on_update=on_update, thread_id=message["thread_id"])
+        else:
+            values = resume_analysis(message["thread_id"], reply, deps, on_update=on_update)
         message["values"] = values
         message["content"] = values.get("answer") or OUTAGE_MESSAGE
     except Exception:
@@ -97,9 +101,48 @@ def _run(message: dict[str, Any], box: Any) -> None:
         message["values"] = {"error": {"kind": "llm", "message": OUTAGE_MESSAGE},
                              "answer_status": "cannot_answer", "answer": OUTAGE_MESSAGE}
         message["content"] = OUTAGE_MESSAGE
-    message["status"] = "finished"
-    state.pop(ACTIVE, None)
+    request = message["values"].get(CONFIRMATION_REQUEST)
+    if request is not None:
+        message.update(status="paused", pause=request, content="")
+        message["lines"].append(WAITING_LINE)
+    else:
+        message["status"] = "finished"
+        state.pop(ACTIVE, None)
     st.rerun()
+
+
+def _pages(pages: list[int]) -> str:
+    return f"page {pages[0]}" if len(pages) == 1 else "pages " + ", ".join(str(page) for page in pages)
+
+
+def _resume_with(message: dict[str, Any], reply: dict[str, Any]) -> None:
+    message.update(status="running", reply=reply)
+    message.pop("pause", None)
+    st.rerun()
+
+
+def _render_pause(message: dict[str, Any]) -> None:
+    """Per Question part: Candidate tables as boxes (the Selected ones ticked) or the part's reason."""
+    thread_id = message["thread_id"]
+    st.markdown(PAUSE_INTRO)
+    tables: dict[int, list[str]] = {}
+    for part in message["pause"]["parts"]:
+        st.markdown(f"**Question {part['number']}**")
+        st.text(part["text"])
+        if not part["answerable"]:
+            st.text(part["reason"])
+            continue
+        tables[part["number"]] = [
+            candidate["table_id"] for candidate in part["candidates"]
+            if st.checkbox(f"{candidate['name']} ({candidate['document']}, {_pages(candidate['pages'])})",
+                           value=candidate["table_id"] in part["selected"],
+                           key=f"confirm-{thread_id}-{part['number']}-{candidate['table_id']}")
+        ]
+    cancel, calculate = st.columns(2)
+    if cancel.button("Cancel", key=f"confirm-cancel-{thread_id}"):
+        _resume_with(message, {"action": "cancel"})
+    if calculate.button("Calculate", key=f"confirm-calculate-{thread_id}", type="primary"):
+        _resume_with(message, {"action": "calculate", "tables": tables})
 
 
 @st.cache_data(show_spinner=False)
@@ -135,6 +178,9 @@ def render_analysis_message(message: dict[str, Any]) -> None:
     with box:
         for line in message["lines"]:
             st.text(line)
+    if message["status"] == "paused":
+        _render_pause(message)
+        return
     if not finished:
         _run(message, box)
     if values.get("error"):

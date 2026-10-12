@@ -3,7 +3,7 @@
 import stat
 
 from services.sandbox import OUTPUT_CAP_BYTES, prepare_run_folder, run_script
-from tests.analyst_stubs import FakeDockerClient
+from tests.stubs import FakeDockerClient
 
 
 def test_calculation_runs_with_isolation_and_releases_its_files(tmp_path) -> None:

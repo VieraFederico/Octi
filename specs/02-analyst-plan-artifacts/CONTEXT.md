@@ -1,8 +1,8 @@
-# CONTEXT — Spec 02 Analyst (after Iteration 4)
+# CONTEXT — Spec 02 Analyst (after Iteration 5)
 
 Spec 02 v0.9 (D-120/D-121), staged verification (D-118). Iteration 3 is committed in
 `236b2cf`; spec 01's Iteration 7 record is committed. Iteration 4 was implemented alone.
-The student reviews and commits; this run stops before Iteration 5.
+Iteration 5 adds live checks, final README documentation and shared stubs. Verification remains incomplete: further testing was waived by the student for submission.
 
 ## Current state
 - Pure pieces: §7 models, four prompts, answerability rules, selection/attempt/number checks,
@@ -35,13 +35,13 @@ The student reviews and commits; this run stops before Iteration 5.
 - `ui/analysis.py` — queued/running/finished message, progress, evidence and lazy table loading.
 - `ui/analysis_window.py` — pure memory builder.
 - `ui/chat.py`, `app.py`, `ui/sidebar.py` — Analysis submission/handoff/rendering/busy controls.
-- `tests/analyst_stubs.py` — Analyst builders, fake Docker, extended model/embedding/query fakes,
+- `tests/stubs.py` — Analyst builders, fake Docker, extended model/embedding/query fakes,
   sandbox runner, trace recording transport and UI runner/result fixtures.
 - `tests/unit/test_analyst_*.py`, `test_prelude.py`, `test_sandbox*.py` — graph/pure/service smoke and
   earlier function tests. `test_analysis_ui.py`, `test_analysis_window.py` — UI state/window smoke.
 - `tests/functional/test_analysis_flow.py` — streaming/history/lazy data, PDF endings and layouts.
 - Existing chat/app/ingestion functional tests now expect Analysis instead of the superseded placeholder.
-- Artifacts: decisions append-only; records 01–04. README/exhaustive verification remain Iteration 5.
+- Artifacts: decisions append-only; records 01–05. README and live test definitions are present; exhaustive/live/manual verification remains pending.
 
 ## Public interfaces
 - Models: QueryPlan/QuestionPart, TableSelection/PartSelection, CodeDraft, EmittedPart,
@@ -63,7 +63,7 @@ The student reviews and commits; this run stops before Iteration 5.
   (plain dict). Attempts also carry approach, timeout and feedback. No settings/clients/files/frames.
 - make_deps(settings, *, catalog=None) → AnalystDeps; None means not loaded, [] means loaded/empty.
   All service/model/table-path/runner seams are injected lazily; sandbox_base_dir can be overridden.
-- build_graph(deps), run_analysis(question, window, deps, *, on_update=None, thread_id=None)
+- build_graph(deps), run_analysis(question, window, deps, confirm_tables, *, on_update=None, thread_id=None, extra_tags=())
   → graph.py. Returns final state; callback receives (node_name, partial_update).
 - run_config, end_metadata, execution_metrics, mask_sandbox_output, tracing_scope → graph.py.
   Root is Analysis: <first 60 question chars>; compiled graph child is Analyst graph.
@@ -82,7 +82,7 @@ The student reviews and commits; this run stops before Iteration 5.
   _full_table caches frames outside messages/state, by thread/table. No read before expansion.
 - Real spec 01 seams: CatalogEntry/load_catalog/entry_from_record, ui.catalog session keys
   catalog/catalog-loaded/ingestion-settings, render_table_card, Parquet store paths.
-- Test helpers and their scripting are defined in tests/analyst_stubs.py, including StubAnalysisRunner.
+- Test helpers and their scripting are defined in tests/stubs.py, including StubAnalysisRunner and analyst_catalog_entry (ingestion catalog_entry remains unchanged).
 
 ## Conventions & invariants
 - No secret-file reads, installs/downloads, commits/pushes or protected root/spec edits.
@@ -108,15 +108,15 @@ UI smoke:
 
 Graph smoke:
 `.venv/bin/python -m pytest -q tests/unit/test_analyst_graph.py tests/unit/test_analyst_nodes.py tests/unit/test_analyst_state.py tests/unit/test_analyst_tracing.py`
-— 29 passed after Iteration 3. Full suite after Iteration 4: 734 passed, 2 live tests deselected in 62.99 s.
+— 29 passed after Iteration 3. Full suite after Iteration 5: 734 passed, 2 live tests deselected in 62.99 s.
 
 ## Known gaps
-- Detailed VCs deferred under D-118 are listed in iteration records; consolidate them in Iteration 5.
+- Detailed deferred VCs remain pending; the student waived further tests to meet the submission deadline.
 - Last observed WSL venv lacks docker==7.1.0. Fakes work; production needs the existing pinned SDK
   available and the student-built image. No dependency/image operation was run by this agent.
-- README sandbox section and Analysis documentation remain Iteration 5.
+- README sandbox setup and Analysis documentation are complete.
 - Real isolation/services, output masking in live traces, 375/1280 px layout and timings are student checks.
-- The graph has no checkpointer/pause yet; spec 03 adds its table-confirmation pause.
+- The current graph includes spec 03 table confirmation and checkpointing. run_analysis requires confirm_tables; live tests explicitly disable it.
 - Template fallback is English; model response uses the question's language.
 - A very long question can exceed the select prompt budget; a wrong row can produce plausible output.
 - AppTest opens Show data through widget state; browser interaction remains manual verification.

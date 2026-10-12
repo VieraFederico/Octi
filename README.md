@@ -9,11 +9,10 @@ table, describes it with an LLM and indexes it in Pinecone; an **Analyst agent**
 question needs, writes and runs Python to compute the answer, and says whether the question was
 `answered`, `partial` or `cannot_answer`.
 
-> **Status.** The Ingestion agent is complete in the app: attach a PDF, follow the run in the chat,
-> answer any pauses, and browse the results in the Library. The Analyst agent — retrieval, table
-> selection, code generation, isolated execution in a Docker sandbox, self-correction and the
-> `answered` / `partial` / `cannot_answer` decision — is implemented and covered by the offline test
-> suite; in the chat, questions are not yet routed to it and receive a placeholder reply.
+> **Status.** Both agents run in the app. Attach a PDF to extract and index its tables, follow the run
+> in the chat and browse the results in the Library; ask a question and the Analyst retrieves the
+> tables it needs, writes and runs Python in an isolated Docker sandbox, corrects itself, and answers
+> with `answered`, `partial` or `cannot_answer`, showing the tables, code and output it used.
 
 ## Getting started
 
@@ -51,6 +50,9 @@ name, namespace, log level) have working defaults and stay commented out.
 `INGESTION_MAX_RETRIES` defaults to 2 (allowed 0–5): each table gets one initial description attempt
 and at most that many corrections after deterministic validation. The ingestion model is always
 `LLM_MODEL`; the chat model picker does not change it.
+
+`ANALYST_MAX_RETRIES` defaults to 2 (allowed 0–5): one initial code attempt and at most two
+corrections. `SANDBOX_TIMEOUT_SECONDS` defaults to 30 (allowed 5–120), per container run.
 
 Security notes:
 
@@ -118,6 +120,11 @@ appear in any output. The live test runs the same code as the service check, so 
 disagree. The live ingestion test checks the ACME sample's five tables, pages, ids and Parquet
 files without asserting model wording. It uses a unique temporary namespace and Table store,
 and removes its records and files afterwards. Live checks use your proxy budget.
+
+Live sandbox tests check a normal script, a harmless host file outside the mount, blocked network,
+an endless loop and process exhaustion. The Analyst live test ingests ACME into its own namespace,
+checks an answered revenue question, numeric output and table identity, and cleans up afterwards.
+Run these checks yourself with the image already available; tests never build or pull images.
 
 ### 6. Run the app
 
@@ -199,6 +206,8 @@ Octi/
 │   ├── catalog.py           session catalog and document lookups
 │   ├── upload.py            duplicate/replacement confirmations
 │   ├── ingestion.py         live run, pause/resume and durable summaries
+│   ├── analysis.py          Analysis progress, answers and expandable evidence
+│   ├── analysis_window.py   last four completed question/answer pairs
 │   ├── table_card.py        shared cards for the chat and Library
 │   ├── new_chat.py          "New chat" confirmation modal
 │   ├── error_screen.py      error screen and its messages
@@ -233,6 +242,14 @@ Octi/
 │       ├── tables.py        extraction, headers and multi-page joins
 │       ├── cleaning.py      flattened headers and numeric conversion
 │       └── context.py       nearby headings, captions and notes
+├── agents/analyst/
+│   ├── graph.py             compiled workflow, routing, streaming and tracing
+│   ├── state.py             lightweight state and injected dependencies
+│   ├── nodes.py             retrieval, selection, calculation and response steps
+│   ├── schemas.py           plans, selections, outcomes and answer models
+│   ├── prompts.py           four prompts, shared rules and bounded metadata
+│   ├── checks.py            deterministic validation, merge and number checks
+│   └── prelude.py           table aliases, loading and safe result emission
 ├── data/
 │   ├── sample_pdfs/         two generated, committed example PDFs
 │   └── tables/              local Parquet data (ignored by Git)
@@ -417,28 +434,89 @@ graph TD;
 - A local Streamlit component sends Document clicks to Python while browser-owned HTML expanders
   keep opening without a rerun. PDF-derived names, descriptions and previews are escaped.
 
-## Analyst workflow
+### Analyst
+
+- Retrieval embeds up to three English search phrases, queries five records per phrase, and keeps
+  the ten best distinct tables because metadata identifies evidence before full data is read.
+  Selection sees bounded metadata and previews; only selected Parquet files enter calculations.
+- All four model calls use `LLM_MODEL` through the university proxy because a single configured
+  model makes runs reproducible. The chat model picker does not change the Analyst model.
+- The last four completed Analysis question/answer pairs form the conversation window because
+  follow-ups need context without ingestion messages or full tables. The latest message wins.
+- Selection and generation share answerability rules. Missing periods, external conversion data,
+  undefined comparisons and forecasts stay missing; unclear meanings are ambiguous. Scale and
+  percent conversions are allowed; monthly totals require every month and stated conversions.
+- Docker uses a read-only root and table mount, no network, an empty environment, user 10001,
+  dropped capabilities and no-new-privileges because generated code must remain isolated.
+  Limits are 512 MB memory and swap combined, one CPU, 64 processes and a 64 MB temporary filesystem.
+  Timeout kills the container; cleanup removes it and its folder. Images are local only.
+- Plain code merges verdicts and emitted results: all parts answered gives `answered`, some gives
+  `partial`, none gives `cannot_answer`. Empty or non-finite emitted values become missing.
+- The number check accepts formatting, rounding and supported scale conversions but rejects
+  invented figures. One response correction is allowed, then a template uses computed facts.
+  `cannot_answer` response facts contain no answer values or method.
+- Failed scripts receive only the latest attempt's feedback. Outputs retain the last 64 KB per
+  stream; attempt histories remain as evidence. Service outages end with a safe message.
+- Traces are named `Analysis: <first 60 question characters>`, tagged `analysis`. Every node is
+  visible; completion records status, attempts and tables. Persisted traces mask sandbox output
+  and copied feedback, retaining execution metrics.
+- The chat streams progress and preserves evidence. Show data loads full tables lazily; selection-only
+  answers show Tables considered. New chat clears memory; the composer waits during running analysis.
+
+### Analyst workflow
 
 ```mermaid
-flowchart TD
-    Q([Question]) --> loaded{Catalog loaded?}
-    loaded -- no --> fail
-    loaded -- yes --> empty{Library empty?}
-    empty -- yes --> none[no-tables answer]
-    empty -- no --> understand[understand: standalone question, parts, search phrases]
-    understand --> retrieve[retrieve: top 5 per phrase, max 10 candidates]
-    retrieve --> select[select: verdict per part]
-    select -- invalid once --> select
-    select -- nothing answerable --> merge
-    select -- answerable parts --> code[generate_code]
-    code --> execute[execute: Docker sandbox]
-    execute --> check{check}
-    check -- failed, retries left --> code
-    check -- ok or retries used --> merge[merge_status]
-    merge --> respond[respond: answer from facts, numbers checked]
-    understand -. LLM error .-> fail[fail: error state, cannot_answer]
-    retrieve -. Pinecone error .-> fail
-    execute -. sandbox unavailable .-> fail
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	library_check(library_check)
+	no_tables(no_tables)
+	understand(understand)
+	retrieve(retrieve)
+	select(select)
+	confirm_tables(confirm_tables)
+	generate_code(generate_code)
+	execute(execute)
+	check(check)
+	merge_status(merge_status)
+	respond(respond)
+	template(template)
+	fail(fail)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> library_check;
+	check -.-> generate_code;
+	check -.-> merge_status;
+	confirm_tables -.-> generate_code;
+	confirm_tables -.-> merge_status;
+	execute -.-> check;
+	execute -.-> fail;
+	generate_code -.-> check;
+	generate_code -.-> execute;
+	generate_code -.-> fail;
+	library_check -.-> fail;
+	library_check -.-> no_tables;
+	library_check -.-> understand;
+	merge_status --> respond;
+	respond -.-> __end__;
+	respond -.-> template;
+	retrieve -.-> fail;
+	retrieve -.-> select;
+	select -.-> confirm_tables;
+	select -.-> fail;
+	select -.-> merge_status;
+	understand -.-> fail;
+	understand -.-> retrieve;
+	fail --> __end__;
+	no_tables --> __end__;
+	template --> __end__;
+	select -.-> select;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc
 ```
 
 - **Answer status is decided by code, not by the answer's wording.** Selection gives a verdict per
@@ -460,6 +538,11 @@ flowchart TD
 
 ## Known limitations
 
+- Generated code can silently use a wrong row and yield a plausible number. A conversation window
+  can carry over a wrong entity; state the entity in a new question.
+- The model picker does not change the Analyst model. Template fallback is in English. Very long
+  questions can exceed the prompt budget. Real execution requires the SDK, daemon and local image.
+
 - Borderless tables and headers placed above them may not be recognized reliably; plain numeric
   headers without formatting clues can be treated as data. Tables below the extraction thresholds
   (fewer than two columns, no data row or no filled data cell) are ignored.
@@ -476,8 +559,6 @@ flowchart TD
   of the same document from multiple browser sessions is not supported.
 - Index cleanup failures can leave old-version records alongside the new version until another
   upload completes cleanup. The catalog assumes records were created by Octi.
-- Questions in the chat are not yet routed to the Analyst agent; it runs through its graph and the
-  offline test suite. The evaluation report and the test-question set are not included yet.
 - Generated code that silently uses a wrong row still yields a valid number no check can catch; a
   four-turn window can carry over an entity the user did not mean.
 

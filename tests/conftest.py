@@ -76,7 +76,7 @@ def fake_docker_factory(monkeypatch: pytest.MonkeyPatch, request: pytest.Fixture
     if _is_live(request):
         return
     from services import health, sandbox
-    from tests.analyst_stubs import FakeDockerClient
+    from tests.stubs import FakeDockerClient
 
     monkeypatch.setattr(sandbox, "make_docker_client", FakeDockerClient)
     monkeypatch.setattr(health, "make_docker_client", FakeDockerClient)

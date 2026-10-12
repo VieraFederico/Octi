@@ -4,7 +4,7 @@ import pytest
 import re
 from html import unescape
 
-from tests.analyst_stubs import FakeDockerClient
+from tests.stubs import FakeDockerClient
 
 
 @pytest.mark.parametrize("reachable,image_present", [(False, True), (True, False)])

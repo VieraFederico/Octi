@@ -2,7 +2,7 @@
 
 from agents.analyst import nodes
 from agents.analyst.schemas import CodeDraft, FinalAnswer, PartOutcome
-from tests.analyst_stubs import analyst_deps, catalog_entry, query_plan
+from tests.stubs import analyst_deps, analyst_catalog_entry as catalog_entry, query_plan
 
 
 def test_retrieval_merges_ranked_phrases_without_reading_table_data(make_settings, tmp_path) -> None:
