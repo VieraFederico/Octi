@@ -1,12 +1,14 @@
 # Spec 01 — Ingestion agent
 
-- **Version:** 0.7
+- **Version:** 0.9
 - **Last updated:** 2026-10-11
 - **Status:** Reviewed (`/review-spec` round 3: READY) — next `/write-spec-plan`
 - **Owner:** Federico Viera
 - **Parent:** `specs/00-foundation.md` (v0.7). Spec 00 identifiers are cited, never renumbered; this
   spec uses the 1xx range (FR-101, BR-101, NFR-101, VC-101, A-101, OQ-101).
-- **Changelog:** v0.7 — no "View trace" link in the UI (D-095): FR-148 and VC-151 removed
+- **Changelog:** v0.9 — Iteration 3 findings folded in (D-113; S01-D-008, S01-D-009, S01-D-011):
+  FR-113 step 1, FR-124, FR-157's limitations. v0.8 — sample PDF additions for spec 03's test questions (D-107): FR-156 and
+  VC-161 extended. v0.7 — no "View trace" link in the UI (D-095): FR-148 and VC-151 removed
   (ids kept), run labels unchanged. v0.6 — chat, Library and sidebar messages never name backend services (D-094):
   FR-139, FR-160, FR-163, FR-164 and BR-106 reworded, VC-142, VC-168, VC-172, VC-173 updated. v0.5 — dependencies pinned to the student's install (A-106). v0.4 — `/review-spec` round 2 fixes (D-081 … D-083): sidebar disabled while a
   run streams (FR-161), uploads need the catalog and step 4 asks Pinecone (FR-163, FR-138),
@@ -17,7 +19,7 @@
   spec 00 items listed. v0.2 — OQ-101 … OQ-104 resolved (D-072 … D-075: sidebar navigation FR-152,
   light graph state BR-111, enrich outage FR-160, 60 s suite NFR-103). v0.1 — first draft from the
   spec 01 discovery (D-046 … D-071).
-- **Decisions:** root `DECISIONS.md` D-046 … D-084, D-094 (message wording), D-095 (no trace link). Spec-local decisions made during planning and
+- **Decisions:** root `DECISIONS.md` D-046 … D-084, D-094 (message wording), D-095 (no trace link), D-107 (sample PDF additions), D-113 (Iteration 3 findings). Spec-local decisions made during planning and
   implementation go to `specs/01-ingestion-plan-artifacts/DECISIONS.md` as `S01-D-NNN` (D-004).
 - **Glossary:** `CONTEXT.md` (Table, Table metadata, Table context, Table preview, Table store,
   Index record, Document, Skipped part, Ingestion run).
@@ -61,7 +63,8 @@ graders (assignment §5, 25 % of the grade, every step visible in LangSmith).
 ### Out
 - Answering questions, retrieval, the sandbox, answerability (spec 02). The question placeholder of
   spec 00 FR-022 stays.
-- The evaluation report, the Analyst graph diagram, the test questions, the demo video (spec 03).
+- The evaluation report, the Analyst graph diagram and the test questions (spec 03); no demo video
+  (cancelled by the professor, D-111).
 - OCR for scanned pages (assignment §5.1: out of scope; bonus only).
 - Deleting a Document from the UI; text search in the Library (D-066).
 - Parallel enrichment of Tables (D-052).
@@ -124,10 +127,11 @@ graders (assignment §5, 25 % of the grade, every step visible in LangSmith).
 - **FR-112 (Must)** — Given a joined Table, Then its `pages` lists every page it spans in order, and
   its `table_id` uses its first part's page and position (D-048).
 - **FR-113 (Must)** — Header flattening (D-056), applied after joining and before number cleaning:
-  1. The header rows are PyMuPDF's header row plus each following top row that has a horizontally
-     merged cell, or bold text while the first data row is not bold, or no data value (FR-117 rules;
-     a whole number from 1900 to 2100 in a row of labels counts as a label). At most 3 header rows;
-     at least 1 data row remains.
+  1. The header rows are the top rows that each show a header clue — PyMuPDF's own header row
+     included, since PyMuPDF marks the first row of every table as its header: a horizontally merged
+     cell, or bold text while a row below is not bold, or no data value (FR-117 rules; a whole number
+     from 1900 to 2100 written without separators, in a row of labels, counts as a label). At most 3
+     header rows; at least 1 data row remains (D-113).
   2. In a header row, a position covered by a merged cell takes the text of the cell to its left only
      when that cell's box spans the position; an empty cell stays empty.
   3. Each column's name is its header levels joined top to bottom with ` / `, skipping empty parts
@@ -180,7 +184,8 @@ graders (assignment §5, 25 % of the grade, every step visible in LangSmith).
   the footnotes), each cut to 600 characters; `footnotes` — the lines right below it that start with
   a marker (`(1)`, `*`, `a)`) or with `Note:`, `Nota:`, `Source:`, `Fuente:`.
 - **FR-124 (Must)** — Given a text block, Then it counts as context for a Table only if it overlaps
-  the Table horizontally by at least half of the block's width; text repeated on more than half of
+  the Table horizontally by at least half the width of the narrower of the two (the block or the
+  Table) (D-113); text repeated on more than half of
   the pages (running headers and footers; only in PDFs of at least 3 pages, D-080), bare page
   numbers and text inside the Table's box never count (D-058).
 - **FR-125 (Must)** — Given a multi-page Table, Then `section`, `caption` and `before` come from its
@@ -333,14 +338,19 @@ graders (assignment §5, 25 % of the grade, every step visible in LangSmith).
 
 ### Sample PDFs, docs and tests
 - **FR-156 (Must)** — `scripts/make_sample_pdfs.py` writes `data/sample_pdfs/acme-annual-report-2023.pdf`
-  and `data/sample_pdfs/informe-regional-2024.pdf` with the contents listed in D-070; both files are
-  committed; running the script again gives PDFs with the same extracted Tables (D-070).
+  and `data/sample_pdfs/informe-regional-2024.pdf` with the contents listed in D-070, plus, in the
+  ACME PDF, an R&D expenses table by year, an income table with both "Revenue (gross)" and "Revenue
+  (net)" columns, and a regional sales table with no national row (D-107); every table's data lives
+  in importable module-level constants of the script (spec 03 derives expected answers from them);
+  both files are committed; running the script again gives PDFs with the same extracted Tables
+  (D-070, D-107).
 - **FR-157 (Must)** — The README gains, in its design-decisions part: the extraction library and its
   AGPL-3.0 license, the Table store choice, the embedding text and metadata, the ingestion graph as a
   Mermaid diagram exported from the graph; a known-limitations list (borderless tables, plain
   numeric headers, tables below the FR-110 thresholds, a headerless next-page table with the same
   column count is joined, ambiguous `1.234` read as English, metadata always in English, images and
-  scanned pages not read); and the command that regenerates the sample PDFs (assignment §9,
+  scanned pages not read, headers placed above borderless tables, a space left inside a word
+  hyphenated at a line end in the Table context); and the command that regenerates the sample PDFs (assignment §9,
   D-043 style).
 - **FR-158 (Must)** — The default test run covers the layers of D-070 offline, with a scripted stub
   LLM, stub embeddings, an in-memory fake Pinecone and a temporary Table store (spec 00 FR-034).
@@ -762,8 +772,9 @@ Tracing, settings, secrets
 
 Sample PDFs, docs, tests
 - VC-161 (FR-156): running the script twice → both PDFs exist; extracting them gives the same Tables
-  (names of columns, row counts, pages) both times; the ACME PDF has a multi-page Table and a
-  merged-cell header.
+  (names of columns, row counts, pages) both times; the ACME PDF has a multi-page Table, a
+  merged-cell header, the R&D table, the gross/net income table and the regional table without a
+  national row; the extracted values equal the script's constants.
 - VC-162 (FR-157): the README contains the ingestion design decisions, the AGPL-3.0 note, a Mermaid
   block with the ingestion graph's nodes, the known-limitations list and the regeneration command.
 - VC-163 (FR-158, NFR-103, NFR-108): default `pytest` → all pass, zero network connections, under

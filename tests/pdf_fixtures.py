@@ -101,10 +101,18 @@ def _pixmap(shade: int) -> pymupdf.Pixmap:
 
 @dataclass(frozen=True)
 class Page:
-    """One fixture page: HTML blocks drawn top to bottom, then images drawn on top of them."""
+    """One fixture page: HTML blocks drawn top to bottom, then images drawn on top of them.
+
+    With `right` blocks the page has two columns: `blocks` fill the left half and `right` the right
+    half. `top_line` (bold) and `bottom_line` are single lines drawn in the top and bottom margins,
+    like a running header and a page number.
+    """
 
     blocks: tuple[str, ...] = ()
     images: tuple[Image, ...] = ()
+    right: tuple[str, ...] = ()
+    top_line: str = ""
+    bottom_line: str = ""
 
 
 def image_only_page(shade: int = 200) -> Page:
@@ -117,6 +125,17 @@ def text_page(text: str, *images: Image) -> Page:
     return Page(blocks=(paragraph(text),), images=images)
 
 
+def _columns(spec: Page) -> list[tuple[pymupdf.Rect, tuple[str, ...]]]:
+    """The rectangles the page's blocks are drawn in: the whole content area, or two halves."""
+    if not spec.right:
+        return [(CONTENT_RECT, spec.blocks)]
+    middle = CONTENT_RECT.x0 + CONTENT_RECT.width / 2
+    gutter = 9
+    left = pymupdf.Rect(CONTENT_RECT.x0, CONTENT_RECT.y0, middle - gutter, CONTENT_RECT.y1)
+    right = pymupdf.Rect(middle + gutter, CONTENT_RECT.y0, CONTENT_RECT.x1, CONTENT_RECT.y1)
+    return [(left, spec.blocks), (right, spec.right)]
+
+
 def make_pdf(*pages: Page) -> bytes:
     """Draw the pages, in order, into a new PDF and return its bytes.
 
@@ -126,11 +145,17 @@ def make_pdf(*pages: Page) -> bytes:
     with pymupdf.open() as doc:
         for number, spec in enumerate(pages, start=1):
             page = doc.new_page(width=PAGE_RECT.width, height=PAGE_RECT.height)
-            if spec.blocks:
+            for rect, blocks in _columns(spec):
+                if not blocks:
+                    continue
                 # scale_low=1: never shrink the text to make it fit; report the overflow instead.
-                spare_height, _scale = page.insert_htmlbox(CONTENT_RECT, "".join(spec.blocks), css=CSS, scale_low=1)
+                spare_height, _scale = page.insert_htmlbox(rect, "".join(blocks), css=CSS, scale_low=1)
                 if spare_height < 0:
                     raise ValueError(f"the blocks of page {number} do not fit on one page")
+            if spec.top_line:
+                page.insert_text((MARGIN, MARGIN - 12), spec.top_line, fontname="hebo", fontsize=9)
+            if spec.bottom_line:
+                page.insert_text((MARGIN, PAGE_RECT.height - MARGIN + 18), spec.bottom_line, fontsize=9)
             for image in spec.images:
                 page.insert_image(pymupdf.Rect(image.rect), pixmap=_pixmap(image.shade))
         return doc.tobytes()

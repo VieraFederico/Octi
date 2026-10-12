@@ -1,17 +1,18 @@
 # Spec 02 — Analyst agent
 
-- **Version:** 0.3
+- **Version:** 0.4
 - **Last updated:** 2026-10-11
 - **Status:** Reviewed (`/review-spec` round 2: READY) — next `/write-spec-plan`
 - **Owner:** Federico Viera
 - **Parents:** `specs/00-foundation-frozen.md` (spec 00 capsule) and `specs/01-ingestion.md` (v0.7;
   its §7 interfaces are the contract this spec consumes). Parent identifiers are cited, never
   renumbered; this spec uses the 2xx range (FR-201, BR-201, NFR-201, VC-201, A-201, OQ-201).
-- **Changelog:** v0.3 — `/review-spec` round 1 fixes (D-104): empty library is a normal answer
+- **Changelog:** v0.4 — in the UI, Question parts are labelled "Question 1", "Question 2" (D-110):
+  FR-235. v0.3 — `/review-spec` round 1 fixes (D-104): empty library is a normal answer
   (FR-202), catalog reload (FR-246), readable sandbox folder (FR-217), `select` size caps (FR-209,
   NFR-205), wording of FR-201, FR-203, FR-212, FR-236, A-206. v0.2 — OQ-201 resolved (D-103): answers in the question's language, search phrases
   in English (FR-204, FR-227); `docker==7.1.0` pinned (A-201). v0.1 — first draft from the spec 02 discovery (D-085 … D-101).
-- **Decisions:** root `DECISIONS.md` D-085 … D-101, D-103, D-104 (plus D-094 / D-095, which also amended spec 01).
+- **Decisions:** root `DECISIONS.md` D-085 … D-101, D-103, D-104, D-110 (plus D-094 / D-095, which also amended spec 01).
   Spec-local decisions made during planning and implementation go to
   `specs/02-analyst-plan-artifacts/DECISIONS.md` as `S02-D-NNN` (D-004).
 - **Glossary:** `CONTEXT.md` (Analysis run, Question part, Candidate table, Selected table, Answer
@@ -220,6 +221,7 @@ requirements on isolated execution and on answerability).
   ends (D-096).
 - **FR-235 (Must)** — The finished message shows, in order: the Answer status badge (from state;
   answered, partial and cannot_answer with distinct colors), the answer text, one "Missing:" line
+  (labelled "Question N", the UI's name for a Question part, D-110)
   per unanswered Question part, then folded sections: **Tables used** (spec 01's Table card per
   Selected table, with **Show data** loading the full Table from the Table store only when opened),
   **Code** (the last attempt), **Output** (stdout and the emitted result), **Attempts** (each failed

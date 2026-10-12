@@ -254,13 +254,16 @@ constants"; `ROOT/DECISIONS.md` D-058, D-080; `ROOT/CONTEXT.md` (term "Table con
     flattened header or no header clue in its first row; chains);
   - unreadable tables: `�` in at least a quarter of the filled cells → flagged, never cleaned or sent
     on (FR-119 table part, FR-122);
-  - `extract_tables(doc)` → the list of `ExtractedTable`s, using `pdf/cleaning.py`.
+  - `extract_tables(doc, sha)` → the list of `ExtractedTable`s, using `pdf/cleaning.py` (the hash comes
+    from `load_pdf`; S01-D-009, spec v0.9).
 - `scripts/make_sample_pdfs.py` (credit the lesson-15 generator's origin only in a neutral comment)
   writing `data/sample_pdfs/acme-annual-report-2023.pdf` and `data/sample_pdfs/informe-regional-2024.pdf`
   with the contents of D-070 (ACME: currency, percent, parentheses, `n/a`, a multi-page table, a
   two-row merged header, footnotes, a two-column page, one embedded image; Informe: Spanish,
   `1.234,5`, section titles, `Cuadro N` captions, one entity shared with ACME for spec 03's
-  multi-Table questions). Deterministic output. Add `data/tables/` to `.gitignore` (Edit tool).
+  multi-Table questions), **plus the D-107 additions (spec v0.8 FR-156): an R&D expenses table by year,
+  an income table with "Revenue (gross)" and "Revenue (net)", and a regional sales table with no national
+  row; all table data in importable module-level constants**. Deterministic output. Add `data/tables/` to `.gitignore` (Edit tool).
   detail you had to fix (e.g. how "bold" is read from font flags).
 *Part 2 — Table context:*
 - `agents/ingestion/schemas.py`: a `TableContext` data class with the five fields.

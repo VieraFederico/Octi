@@ -78,3 +78,80 @@ fractional or missing numeric columns still use float64 as FR-117 requires.
 **Consequences**: Such whole columns cannot crash int64 construction or silently round their values;
 the existing int64/float64/text contract for spec 02 is unchanged.
 **Status**: accepted by the student (2026-10-11).
+
+## S01-D-008: How the header-row clues of FR-113 step 1 are read in code (Iteration 3)
+**Context**: FR-113 names the clues but not how to test them on PyMuPDF output, which marks the
+first row of every table as its "header", even a plain data row (VC-113 says such a row is data).
+**Decision**: Every top row, PyMuPDF's header row included, needs a clue. A row is bold when every
+text span centred in it has the bold font flag (16). The bold clue holds when some row below is not
+bold. A merge is a real cell wider than its column by more than 0.5 pt. A data value is a cell
+`clean_column` turns numeric; a year is four plain digits from 1900 to 2100 (not `2,000`). A
+one-row table whose row shows a clue has "no data row" (FR-110). A cap of 3 header rows applies, and
+at least 1 data row always remains.
+**Rejected**: trusting PyMuPDF's header row (VC-113 fails); "first data row" = the row right after
+the candidates (circular); any whole number 1900–2100 (a value of `2,000` would make a row a label).
+**Consequences**: PyMuPDF's "external" headers (text above a borderless table) are ignored; that
+falls under the borderless-tables limitation.
+**Status**: accepted by the student (2026-10-12).
+
+## S01-D-009: `extract_tables(doc, sha)` and how positions and joins are counted (Iteration 3)
+**Context**: The plan names `extract_tables(doc)`, but `table_id` needs the hash of the original PDF
+bytes, which an open document does not expose cleanly.
+**Decision**: `extract_tables(doc, sha)` takes the hash from `document_sha(data)`, which the graph also
+needs for the Index record. Positions count every table PyMuPDF finds on the page, so a dropped fake
+table keeps its slot and ids do not shift when the filter changes. Only kept, readable tables join.
+An unreadable table is never joined and ends any open chain.
+**Rejected**: reading `doc.stream` (hidden dependency on how the document was opened); positions
+among kept tables only.
+**Consequences**: Iteration 5's `extract_tables` node passes the hash it computed in `load_pdf`.
+**Status**: accepted by the student (2026-10-12).
+
+## S01-D-010: What fixture PDFs cannot show, and how the tests cover it (Iteration 3)
+**Context**: PyMuPDF 1.28.2's HTML engine draws U+FFFD as another glyph (it extracts as `蓣`), and
+rewriting a font's ToUnicode makes MuPDF fall back to glyph ids, never to `�`. `find_tables()`
+reports no 1-column table at all.
+**Decision**: VC-123's table part patches `pymupdf.table.Table.extract` in that test only, so cells
+marked `GARBLED` read as `�`. The FR-110 `< 2 columns` check stays as a guard, and VC-109 asserts
+that the 1-column box never becomes a Table.
+**Rejected**: committing a real damaged PDF (binary fixture, against D-070); dropping the guard.
+**Consequences**: the rule itself (`_is_unreadable`) runs on real extraction output; only the source of
+the `�` text is simulated.
+**Status**: accepted by the student (2026-10-12).
+
+## S01-D-011: FR-124's overlap rule uses the narrower of the block and the Table (Iteration 3)
+**Context**: FR-124 as written ("overlaps the Table horizontally by at least half of the block's
+width") drops every full-width paragraph and heading above a table narrower than half the text width,
+so VC-126 itself fails and real reports lose most of their context.
+**Decision**: A block counts when its horizontal overlap with the Table is at least half the width of
+the narrower of the two. Text in the other column of a two-column page still overlaps 0 and never
+counts.
+**Rejected**: half the Table's width (a short heading over a wide table would be lost); keeping the
+literal rule and narrowing the fixtures.
+**Consequences**: the spec tab rewords FR-124 (spec 01 text change; no interface change).
+**Status**: accepted by the student (2026-10-12).
+
+## S01-D-012: Context details the spec leaves open (Iteration 3)
+**Context**: FR-123 names the fields; some roles overlap in practice.
+**Decision**: A heading is never the caption fallback, `before` or `after` (it is the section). Footnote
+lines are joined with line breaks. Each MuPDF block is split into groups of lines that overlap
+horizontally, because MuPDF merges lines of two columns at the same height into one block. Ligatures
+are expanded (`ﬁ` → `fi`). Cuts are plain slices (no ellipsis).
+**Rejected**: using whole MuPDF blocks (VC-127 fails); keeping ligatures (names unsearchable).
+**Consequences**: `collect_context(doc, table)` reads the page layout once per call; Iteration 5 may
+call it once per Table without caching (sample PDFs: well under a second).
+**Status**: accepted by the student (2026-10-12).
+
+## S01-D-013: Sample PDF contents and constants (Iteration 3)
+**Context**: D-070 lists the hard cases and D-107 adds the test-question tables. The data and its
+names were left to the script.
+**Decision**: ACME (5 pages, years 2021–2023, USD millions): income with gross/net revenue, net income
+`$(12.4)` and net margin %, R&D expenses and staff, regional net sales and market share (two-row
+merged header, regions Patagonia, Cuyo, Pampa, NOA, NEA, no national row), headcount with `n/a` on a
+two-column page with one chart image, and monthly net sales (USD thousands) over pages 4–5 with the
+header repeated. The constants agree with each other: regions sum to net revenue, and the months sum
+to it ×1000. The Informe (Spanish, 1 page) holds population (thousands) and labour rates for the same
+five regions. Deterministic save: `tobytes(garbage=3, deflate=True, no_new_id=True)`, empty metadata.
+**Rejected**: hand-typed tables in HTML; national totals in either PDF (they would answer question 9).
+**Consequences**: spec 03 imports the constants listed in `CONTEXT.md`. The PDFs are byte-identical
+for the same PyMuPDF version.
+**Status**: accepted by the student (2026-10-12).
