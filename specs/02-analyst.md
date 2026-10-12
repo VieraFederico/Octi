@@ -1,18 +1,21 @@
 # Spec 02 — Analyst agent
 
-- **Version:** 0.4
+- **Version:** 0.7
 - **Last updated:** 2026-10-11
 - **Status:** Reviewed (`/review-spec` round 2: READY) — next `/write-spec-plan`
 - **Owner:** Federico Viera
 - **Parents:** `specs/00-foundation-frozen.md` (spec 00 capsule) and `specs/01-ingestion.md` (v0.7;
   its §7 interfaces are the contract this spec consumes). Parent identifiers are cited, never
   renumbered; this spec uses the 2xx range (FR-201, BR-201, NFR-201, VC-201, A-201, OQ-201).
-- **Changelog:** v0.4 — in the UI, Question parts are labelled "Question 1", "Question 2" (D-110):
+- **Changelog:** v0.7 — `cannot_answer` answers carry no method part (D-119): FR-228, VC-225.
+  v0.6 — FR-212: an `answerable` part must name at least one table (D-117); VC-211
+  extended. v0.5 — spec 01 v1.0's `CatalogEntry` (with `row_headers_total`) noted in §7
+  (D-116). v0.4 — in the UI, Question parts are labelled "Question 1", "Question 2" (D-110):
   FR-235. v0.3 — `/review-spec` round 1 fixes (D-104): empty library is a normal answer
   (FR-202), catalog reload (FR-246), readable sandbox folder (FR-217), `select` size caps (FR-209,
   NFR-205), wording of FR-201, FR-203, FR-212, FR-236, A-206. v0.2 — OQ-201 resolved (D-103): answers in the question's language, search phrases
   in English (FR-204, FR-227); `docker==7.1.0` pinned (A-201). v0.1 — first draft from the spec 02 discovery (D-085 … D-101).
-- **Decisions:** root `DECISIONS.md` D-085 … D-101, D-103, D-104, D-110 (plus D-094 / D-095, which also amended spec 01).
+- **Decisions:** root `DECISIONS.md` D-085 … D-101, D-103, D-104, D-110, D-117, D-119 (plus D-094 / D-095, which also amended spec 01).
   Spec-local decisions made during planning and implementation go to
   `specs/02-analyst-plan-artifacts/DECISIONS.md` as `S02-D-NNN` (D-004).
 - **Glossary:** `CONTEXT.md` (Analysis run, Question part, Candidate table, Selected table, Answer
@@ -122,7 +125,8 @@ requirements on isolated execution and on answerability).
   two few-shot `user`/`assistant` pairs: a missing comparison value (`missing_data`, naming what the
   table holds) and an ambiguous column (`ambiguous`, naming both columns) (D-098).
 - **FR-212 (Must)** — Code checks the selection: every `table_id` is a Candidate table, there is
-  exactly one entry per Question part, and `missing` is not empty when required. A failing selection
+  exactly one entry per Question part, `missing` is not empty when required, and every `answerable`
+  part names at least one table (D-117). A failing selection
   gets one retry with one feedback sentence per problem; after a second failure every Question part
   is missing with the reason "I couldn't decide which tables to use.", the run goes to
   `merge_status` (status `cannot_answer`) and `respond` writes the answer (D-088, D-104).
@@ -191,8 +195,9 @@ requirements on isolated execution and on answerability).
   status. The text has 2–6 sentences: results first, then the method (stating every conversion),
   then the sources ("from <Table name>, <file>, page N"), then each unanswered part with its reason;
   it is written in the language of the user's question (D-093, D-103).
-- **FR-228 (Must)** — Given the status is `cannot_answer`, Then no value is passed to `respond`
-  (D-089).
+- **FR-228 (Must)** — Given the status is `cannot_answer`, Then neither values nor the code's
+  `approach` are passed to `respond`, and the answer has no method part: only what is missing per
+  Question part, what the related Tables contain, and the sources consulted (D-089, D-119).
 - **FR-229 (Must)** — Code checks that every number in `text` is a computed value (allowing
   thousands separators, rounding to the shown precision and scale words), a year or a page from the
   facts, or a Question part number; another number gets one retry with "The number X is not in the
@@ -320,7 +325,9 @@ requirements on isolated execution and on answerability).
 | `SANDBOX_TIMEOUT_SECONDS` | int 5–120 | no | 30 | wall-clock limit per container run (D-086) |
 
 ### Consumed from spec 01 (§7)
-`load_catalog(settings) -> list[CatalogEntry]`, `CatalogEntry`, `read_table(table_id) -> DataFrame`,
+`load_catalog(settings) -> list[CatalogEntry]`, `CatalogEntry` (spec 01 v1.0: includes
+`row_headers_total`; `row_headers` holds at most 50), `read_table(table_id) -> DataFrame` (the frame
+exactly as extraction built it),
 the Index record fields (`columns_info`, `row_headers`, `preview`, `pages`, `source_file`), and
 `data/tables/<table_id>.parquet`.
 
@@ -505,8 +512,8 @@ Selection
 - VC-209 (FR-209, FR-210): the `select` input lists every candidate's fields of FR-209; a stub answer
   with verdicts for 2 parts is parsed into `TableSelection`.
 - VC-210 (FR-211): the `select` prompt contains §7's rules block verbatim and the two few-shot pairs.
-- VC-211 (FR-212, BR-209): a stub answer with an unknown id, a missing part and an empty `missing` →
-  one retry carrying three feedback sentences; a second invalid answer → `cannot_answer` with "I
+- VC-211 (FR-212, BR-209): a stub answer with an unknown id, a missing part, an empty `missing` and
+  an `answerable` part with no `table_ids` → one retry carrying four feedback sentences; a second invalid answer → `cannot_answer` with "I
   couldn't decide which tables to use." as every part's reason, status `cannot_answer`, and `respond`
   called with those facts.
 - VC-212 (FR-213): all parts `missing_data` → no `generate_code` call, no sandbox run, status
@@ -541,7 +548,8 @@ Status and answer
 - VC-224 (FR-227): the `respond` input holds the FR-227 facts and its prompt asks for the language of
   the question; a stub text is shown as the answer; the `understand` prompt asks for English search
   phrases.
-- VC-225 (FR-228, BR-203): status `cannot_answer` → the `respond` input contains no value.
+- VC-225 (FR-228, BR-203): status `cannot_answer` → the `respond` input contains no value and no
+  `approach`; the answer has no method part.
 - VC-226 (FR-229): a stub text with "1,288.7" for a computed 1288.7 passes; a text with an invented
   "1,300" → one retry with the FR-229 feedback, then the template answer; a failing `respond` LLM →
   the template answer.

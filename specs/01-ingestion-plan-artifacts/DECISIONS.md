@@ -195,7 +195,7 @@ lines, a gap as nothing, a line break as a space). The 20 rows sent to the LLM a
 **Consequences**: a pathological Table (huge cells) can exceed the 24,000-character budget; VC-165
 holds for ordinary tables (measured: 15,464 characters for 20 columns x 20 rows with 15-character cells
 and 2,000 characters of context). Noted as a known gap.
-**Status**: proposed; awaiting the student's review.
+**Status**: accepted by the student (2026-10-11).
 
 ## S01-D-017: `find_versions` uses `fetch_by_metadata`, not a query (Iteration 4)
 **Context**: A-103 expected "querying with a metadata filter". The installed SDK (pinecone 10.0.0)
@@ -221,8 +221,7 @@ files, so a half-failed delete leaves a record with its file, never a record wit
 **Rejected**: keep the lookup in step 4 and accept the edge case.
 **Consequences**: the same-bytes case is covered by a test. Mutation order is still embed, files,
 upsert, delete (VC-140).
-**Status**: rollback and lookup-first accepted by the student (2026-10-12); the "not one of the new ids"
-wording of step 4 awaits review.
+**Status**: accepted by the student (rollback and lookup-first 2026-10-12; step-4 wording 2026-10-11).
 
 ## S01-D-019: `read_table` returns the frame exactly as extraction built it (Iteration 4)
 **Context**: pandas 3 reads text columns from Parquet as its `str` dtype with NaN gaps; extraction
@@ -233,7 +232,7 @@ so `assert_frame_equal(read_table(id), written)` passes strictly.
 **Consequences**: the Analyst gets the frame ingestion saw. `write_table` writes through a temporary
 file and `os.replace`, so a crash never leaves a half-written file. Ids with a path separator are
 refused (`TableStoreError`) because an id is a file name.
-**Status**: cast back accepted by the student (2026-10-12); temporary file and id check awaiting review.
+**Status**: accepted by the student (cast back 2026-10-12; temporary file and id check 2026-10-11).
 
 ## S01-D-020: Record details the spec leaves open (Iteration 4)
 **Context**: SPEC §7 fixes the Index record fields; some formats were open.
@@ -248,4 +247,37 @@ apostrophes; retry sections come after `First rows` and before `Task`.
 **Rejected**: CSV preview; character count for the guard.
 **Consequences**: Iteration 5 builds `TableToIndex` and calls `write_document`; Iteration 6's card
 reads the preview text as is.
-**Status**: preview format accepted by the student (2026-10-12); the rest awaits review.
+**Status**: accepted by the student (preview format 2026-10-12; the rest 2026-10-11).
+
+## S01-D-021: Chat and pause wording the spec leaves open (Iteration 5)
+**Context**: FR-120 / FR-135 say "the chat says the ingestion was cancelled" without a sentence;
+FR-134 says "its pages, and its caption when known" without a format; plurals for N = 1.
+**Decision**: cancel = "Ingestion cancelled. Nothing from report.pdf was indexed."; a skipped Table's
+bullet = `pages 4–5: <caption>` (pages only when no caption), pages as `page 3` / `pages 4–5`;
+"Index the other 1 table" and "Indexed 1 table from report.pdf" for N = 1. The interrupt value is a
+`PauseQuestion` in parts (intro, bullets, question, choices) so the UI can escape captions.
+**Rejected**: one pre-joined text (the UI could not escape PDF text in it).
+**Consequences**: constants in `nodes.py`; Iteration 6 renders the parts.
+**Status**: accepted by the student (2026-10-11).
+
+## S01-D-022: The deps object and the per-run store (Iteration 5)
+**Context**: the plan lists deps = chat model, embeddings, Pinecone index, Table store root, settings.
+**Decision**: `IngestionDeps(settings, embeddings, index, make_chat_model=make_chat_model, runs=RunStore())`.
+The chat model is a factory called with `settings` in `enrich` (FR-127: always `LLM_MODEL`; the stub
+records it). No Table store root: `write_document` already uses `TABLE_STORE_DIR`, which tests move
+with `table_store_dir`. The per-run store is an object in deps (isolated per test), not a module
+global. `assembled` and `skipped` use the `operator.add` reducer; nodes are `node(state, deps)`.
+**Rejected**: a root field nothing would read; a module-level store shared by all tests.
+**Consequences**: Iteration 6 builds deps once with `make_deps(settings)` and keeps graph + deps together.
+**Status**: accepted by the student (2026-10-11).
+
+## S01-D-023: The recursion limit is computed from a table count taken before the run (Iteration 5)
+**Context**: FR-143 computes the limit from T, but LangGraph fixes the limit when a call starts, before
+`extract_tables` knows T.
+**Decision**: `run_ingestion` counts the tables PyMuPDF finds on every page (`table_upper_bound`)
+before streaming: an upper bound of T, since dropping and joining only lower it. `resume_ingestion`
+uses `len(tables)` from the saved state.
+**Rejected**: an internal breakpoint after `extract_tables` (two root traces per run); a fixed large
+limit (not "computed from T", D-052).
+**Consequences**: `find_tables` runs once more per page (well under a second on the sample PDFs).
+**Status**: accepted by the student (2026-10-11).

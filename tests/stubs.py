@@ -5,6 +5,7 @@ it, so tests can check both the answer and the calls (for example "nothing was c
 """
 
 import hashlib
+import json
 import subprocess
 from collections.abc import Callable, Iterator
 from dataclasses import replace
@@ -13,10 +14,12 @@ from typing import Any
 
 import httpx2  # the HTTP library openai 3.x uses; needed only to build fake openai errors
 import openai
+from langchain_core.messages import AIMessage, BaseMessage
 from pinecone import NotFoundError, PineconeConnectionError
+from pydantic import ValidationError
 
 from agents.ingestion.pdf.cleaning import build_dataframe, row_headers
-from agents.ingestion.schemas import ExtractedTable
+from agents.ingestion.schemas import ColumnDescription, ExtractedTable, TableEnrichment
 from services.health import Clients
 from services.settings import Settings
 from services.vector_store import IndexStatus
@@ -213,6 +216,74 @@ def extracted_table(
         hints=hints,
         row_headers=row_headers(frame),
     )
+
+
+# --- Ingestion: a chat model that answers from a script -------------------------------------------
+
+
+def enrichment_for(table: ExtractedTable, name: str = "Sales by region and year") -> TableEnrichment:
+    """An answer for `table` that passes all five checks of `validate`."""
+    columns = [
+        ColumnDescription(
+            name=column,
+            description=f"Values of {column}",
+            unit="%" if "percent" in table.hints.get(column, []) else "not stated",
+        )
+        for column in table.columns
+    ]
+    return TableEnrichment(name=name, description="What the table measures. Values as printed.", columns=columns)
+
+
+def invalid_enrichment(table: ExtractedTable) -> TableEnrichment:
+    """An answer for `table` that fails exactly one check: the placeholder name `Table 1`."""
+    return enrichment_for(table, name="Table 1")
+
+
+class ScriptedChatModel:
+    """Stands in for the chat model of `enrich`: `make_chat_model=scripted.build` in `IngestionDeps`.
+
+    `answers` are used in call order, one per `invoke` (one per `enrich` attempt; Tables are enriched
+    one after the other, in reading order). Each item is:
+    - a `TableEnrichment`: returned as the parsed answer;
+    - a `dict`: the raw JSON the model wrote; parsed only if it is a valid `TableEnrichment`, otherwise
+      `parsed` is None and `parsing_error` holds the pydantic error (S01-D-015);
+    - an `Exception`: raised by `invoke` (e.g. `openai_connection_error()` or `ProxyUnreachableError`).
+    Running out of answers fails the test with an `AssertionError`.
+
+    Records: `model_names` (the `LLM_MODEL` of each `build`), `structured` (`(schema, include_raw)` of
+    each `with_structured_output`) and `calls` (each message list sent).
+    """
+
+    def __init__(self, answers: list[TableEnrichment | dict[str, Any] | Exception]) -> None:
+        self.answers = list(answers)
+        self.model_names: list[str] = []
+        self.structured: list[tuple[type, bool]] = []
+        self.calls: list[list[BaseMessage]] = []
+
+    def build(self, settings: Settings) -> "ScriptedChatModel":
+        """The `make_chat_model` factory: records the model the settings name."""
+        self.model_names.append(settings.LLM_MODEL)
+        return self
+
+    def with_structured_output(self, schema: type, *, include_raw: bool = False, **_kwargs: object) -> "ScriptedChatModel":
+        self.structured.append((schema, include_raw))
+        return self
+
+    def invoke(self, messages: list[BaseMessage], config: object = None, **_kwargs: object) -> dict[str, Any]:
+        """Like `with_structured_output(..., include_raw=True).invoke`: `{"raw", "parsed", "parsing_error"}`."""
+        self.calls.append(list(messages))
+        if len(self.calls) > len(self.answers):
+            raise AssertionError(f"ScriptedChatModel has no answer for call {len(self.calls)}")
+        answer = self.answers[len(self.calls) - 1]
+        if isinstance(answer, Exception):
+            raise answer
+        if isinstance(answer, TableEnrichment):
+            return {"raw": AIMessage(answer.model_dump_json()), "parsed": answer, "parsing_error": None}
+        raw = AIMessage(json.dumps(answer, ensure_ascii=False))
+        try:
+            return {"raw": raw, "parsed": TableEnrichment.model_validate(answer), "parsing_error": None}
+        except ValidationError as exc:
+            return {"raw": raw, "parsed": None, "parsing_error": exc}
 
 
 # --- Ingestion: embeddings and a Pinecone index that live in memory ----------------------------------

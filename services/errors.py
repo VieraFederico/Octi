@@ -23,9 +23,11 @@ shows them.
         │   ├── VectorStoreUnreachableError
         │   ├── VectorStoreAuthenticationError
         │   └── IndexMismatchError
-        └── TracingError                (LangSmith)
-            ├── TracingUnreachableError
-            └── TracingAuthenticationError
+        ├── TracingError                (LangSmith)
+        │   ├── TracingUnreachableError
+        │   └── TracingAuthenticationError
+        └── SandboxError                (Docker: the sandbox that runs generated code)
+            └── SandboxUnavailableError
 
 Rule (BR-011): add a new leaf only when code or UI must react differently, or the user message differs.
 """
@@ -179,3 +181,16 @@ class TracingUnreachableError(TracingError):
 
 class TracingAuthenticationError(TracingError):
     """LangSmith rejected the API key."""
+
+
+class SandboxError(ExternalServiceError):
+    """The local Docker daemon or the sandbox image failed (spec 02).
+
+    A timeout or a failing script is an attempt outcome, not an error.
+    """
+
+    service = "Docker"
+
+
+class SandboxUnavailableError(SandboxError):
+    """The Docker daemon is unreachable or the image `octi-sandbox:1` is missing (spec 02 FR-231, FR-232)."""

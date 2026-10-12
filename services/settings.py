@@ -92,6 +92,11 @@ class Settings(BaseModel):
     # default. Capped at 5 so a typo cannot burn the proxy budget (D-054).
     INGESTION_MAX_RETRIES: int = Field(default=2, ge=0, le=5)
 
+    # Analyst agent: extra code attempts after a failed one, so 3 attempts by default (D-092).
+    ANALYST_MAX_RETRIES: int = Field(default=2, ge=0, le=5)
+    # Wall-clock limit of one sandbox container run; the container is killed after it (D-086).
+    SANDBOX_TIMEOUT_SECONDS: int = Field(default=30, ge=5, le=120)
+
     LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
 
     @field_validator("LITELLM_BASE_URL")

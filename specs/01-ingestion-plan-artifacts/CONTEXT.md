@@ -1,4 +1,4 @@
-# CONTEXT — Spec 01 Ingestion agent (after Iteration 4)
+# CONTEXT — Spec 01 Ingestion agent (after Iteration 5)
 
 Starting point: spec 00 complete (`specs/00-foundation-plan-artifacts/CONTEXT.md`, capsule
 `specs/00-foundation-frozen.md`). This file describes the codebase as it stands now.
@@ -42,7 +42,47 @@ Starting point: spec 00 complete (`specs/00-foundation-plan-artifacts/CONTEXT.md
     `delete_records` (S01-D-017).
   - `tests/stubs.py`: + `extracted_table`, `FakeEmbeddings`, `FakePineconeIndex`; `tests/conftest.py`:
     + `table_store_dir`.
-- Not yet: the graph (state, nodes, pauses, tracing), the UI changes (Iterations 5–7).
+- Spec 01, Iteration 5 done (parallel mode, D-115; staged verification, D-118): the ingestion graph.
+  - `state.py`: light `IngestionState`, `RunStore` (per-run bytes, open document, full Tables),
+    `IngestionDeps` / `make_deps`, `PauseQuestion`, `RunResult` (S01-D-022).
+  - `nodes.py`: the nine nodes, the two `interrupt` pauses and the chat sentences (S01-D-021).
+  - `graph.py`: routers, `build_graph` (in-memory checkpointer), `run_ingestion` / `resume_ingestion`
+    (updates stream, paused vs finished, store closed at the end), FR-143 limit from a pre-count
+    (S01-D-023), FR-153 run config, FR-154 tracing scope.
+  - `tests/stubs.py`: + `ScriptedChatModel`, `enrichment_for`, `invalid_enrichment`.
+- Not yet: the UI changes (Iteration 6), live checks and README (Iteration 7).
+
+## Contract (Iteration 5) — integrated
+Parallel mode (D-115). Written by the lead before the packages; every body is now implemented and
+the signatures are unchanged. Kept as the reference for the graph's shapes (the docstrings in the
+code hold the binding detail).
+- **Shared, lead-owned:** `agents/ingestion/state.py` — `IngestionState` (TypedDict,
+  `total=False`; `assembled` / `skipped` append via `operator.add`, other keys replace), `TableState`,
+  `SkippedPart` (`kind` `no_text_pages` | `unreadable_table` | `table`, `pages`, `table_id`, `caption`),
+  `AssembledTable` (`metadata` = `TableMetadata.model_dump(mode="json")`, `record_metadata`), `Outcome`
+  (`status` `failed` | `cancelled` | `no_tables` | `nothing_indexed` | `indexed`, `message`), `Choice`,
+  `PauseQuestion` (`pause`, `intro`, `bullets`, `question`, `choices`), `question_text`, `RunResult`
+  (`thread_id`, `status` `paused` | `finished`, `question`, `values`), `RunData` (`pdf`, `document`,
+  `tables` by id), `RunStore` (`open`, `get`, `close`, `thread_ids`), `IngestionDeps(settings, embeddings,
+  index, make_chat_model=make_chat_model, runs=RunStore())`, `make_deps(settings, client=None)`.
+  `tests/stubs.py` — `ScriptedChatModel(answers)` (`build`, `with_structured_output`, `invoke`; records
+  `model_names`, `structured`, `calls`), `enrichment_for(table, name=)`, `invalid_enrichment(table)`.
+  `tests/unit/test_state.py`. Decisions S01-D-021 (wording), S01-D-022 (deps), S01-D-023 (recursion limit).
+- **Node shape:** `node(state, deps) -> dict` (partial update). A node that writes `outcome` ends the run.
+- **Run input state:** `{thread_id, source_file, max_retries, assembled: [], skipped: []}`.
+- **WP-A — nodes** owns `agents/ingestion/nodes.py`, `tests/unit/test_nodes.py`: `format_pages`,
+  `load_pdf`, `extract_tables`, `ask_unreadable`, `collect_context`, `enrich`, `validate`, `next_table`,
+  `ask_skipped`, `index`; message constants `FAILED_ENRICH`, `FAILED_INDEX`, `PREVIOUS_NOT_REMOVED`,
+  `NO_TABLES`, `NOTHING_INDEXED`, `CANCELLED` (already written). Pause nodes call
+  `langgraph.types.interrupt(PauseQuestion)` and act on the resume value.
+- **WP-B — wiring and tracing** owns `agents/ingestion/graph.py`, `tests/unit/test_graph_routing.py`,
+  `tests/unit/test_tracing_config.py`: `NODE_NAMES`, the eight `route_after_*` routers (return a node
+  name or `langgraph.graph.END`), `recursion_limit`, `table_upper_bound`, `run_config`, `tracing_scope`,
+  `build_graph`, `run_ingestion`, `resume_ingestion`.
+- **WP-C — graph tests** owns `tests/unit/test_graph.py`: end-to-end over `build_graph` +
+  `run_ingestion` / `resume_ingestion` with fixture PDFs, `ScriptedChatModel`, `FakeEmbeddings`,
+  `FakePineconeIndex`, `table_store_dir`. Red until A and B land.
+- **Waves:** one wave, A, B and C in parallel; the lead integrated (no seam needed a fix).
 
 ## File map
 Spec 01 (new or changed this spec):
@@ -68,6 +108,13 @@ Spec 01 (new or changed this spec):
   `WriteResult`; constants `ROW_HEADERS_STORED`, `PREVIEW_ROWS`, `PREVIEW_CELL_CHARS`,
   `PREVIEW_MAX_CHARS`, `METADATA_LIMIT_BYTES`.
 - `services/table_store.py` — `TABLE_STORE_DIR`, `write_table`, `read_table`, `delete_tables`.
+- `agents/ingestion/state.py` — graph state types, `RunStore`, `IngestionDeps`, `make_deps`,
+  `PauseQuestion`, `question_text`, `RunResult`.
+- `agents/ingestion/nodes.py` — the nine nodes, `format_pages`, chat-sentence constants.
+- `agents/ingestion/graph.py` — `NODE_NAMES`, routers, `recursion_limit`, `table_upper_bound`,
+  `run_config`, `tracing_scope`, `build_graph`, `run_ingestion`, `resume_ingestion`.
+- `tests/unit/test_state.py` (5), `tests/unit/test_nodes.py` (31), `tests/unit/test_graph_routing.py`
+  and `tests/unit/test_tracing_config.py` (43), `tests/unit/test_graph.py` (15, end to end).
 - `scripts/make_sample_pdfs.py` — sample PDF generator and the table-data constants.
 - `data/sample_pdfs/acme-annual-report-2023.pdf`, `data/sample_pdfs/informe-regional-2024.pdf` —
   committed, generated (byte-identical on re-run with PyMuPDF 1.28.2).
@@ -166,7 +213,15 @@ Spec 01:
   - `INFORME_YEARS` = (2022, 2023); `INFORME_POPULATION[region][year]` (thousands) — Cuadro 1;
     `INFORME_LABOUR[region][column]`, `INFORME_LABOUR_COLUMNS` = Tasa de desempleo, Tasa de empleo
     (%) — Cuadro 2.
-- Test fakes: `extracted_table(columns, rows, table_id=, pages=)`, `FakeEmbeddings(dimension, error, events)`,
+- Ingestion graph (UI in Iteration 6): `graph = build_graph(make_deps(settings))` once, then
+  `run_ingestion(graph, deps, source_file, pdf, on_update=...) -> RunResult` and
+  `resume_ingestion(graph, deps, thread_id, "continue" | "index" | "cancel")`; `RunResult.status`
+  `paused` (render `question`: intro, bullets, question, choices) or `finished`
+  (`values["outcome"]`, `values["assembled"][i]["record_metadata"]` → `entry_from_record`,
+  `values["skipped"]`, `values["image_pages"]`). New chat at a pause: `deps.runs.close(thread_id)`
+  → `agents/ingestion/graph.py`, `agents/ingestion/state.py`.
+- Test fakes: `ScriptedChatModel(answers)` (`build` as `make_chat_model`), `enrichment_for(table)`,
+  `invalid_enrichment(table)`, `extracted_table(columns, rows, table_id=, pages=)`, `FakeEmbeddings(dimension, error, events)`,
   `FakePineconeIndex(fail_on, fail_after, error, page_size, events)` (+ `put`, `ids`, `calls`,
   `upsert_batches`), fixture `table_store_dir` → `tests/stubs.py`, `tests/conftest.py`.
 - Test fixtures: `Page(blocks, images)`, `make_pdf(*pages) -> bytes`, `heading`, `paragraph`,
@@ -236,11 +291,18 @@ Spec 00 (unchanged):
   fixture PDFs from `tests/pdf_fixtures.py` (built in memory per test, nothing binary committed);
   pytest fixtures by parameter name; no test imports another test module.
 - Keep the repo LF (`.gitattributes`); files edited from the Windows side may come back CRLF.
+- Graph: nodes are `node(state, deps) -> dict` (partial update); a node writing `outcome` ends the
+  run; `assembled` / `skipped` are appended (`operator.add`), all else replaced. The state holds no
+  bytes, DataFrame or PyMuPDF object (BR-111); those stay in `deps.runs`, closed by
+  `run_ingestion` / `resume_ingestion` when the run finishes or raises, kept while paused.
+  Pause nodes call `interrupt` by its module name so node tests can patch it. Tests never run a
+  graph with tracing on; `tracing_scope` tests pass a stub client.
 - Course reuse is credited by title in README › Credits, never by `sources/` path.
 
 ## Commands
 ```bash
-.venv/bin/python -m pytest -q                                   # offline suite, ~35 s (429 passed, 1 deselected)
+.venv/bin/python -m pytest -q                                   # offline suite, ~45 s (all tabs' tests)
+.venv/bin/python -m pytest -q tests/unit/test_state.py tests/unit/test_nodes.py tests/unit/test_graph.py tests/unit/test_graph_routing.py tests/unit/test_tracing_config.py   # Iteration 5: 94
 .venv/bin/python -m pytest -q tests/unit/test_tables.py tests/unit/test_sample_pdfs.py tests/unit/test_context.py
 .venv/bin/python -m scripts.make_sample_pdfs                     # regenerate data/sample_pdfs/ (offline)
 .venv/bin/python -m pytest -q tests/unit/test_cleaning.py        # 60 cases, pure cells-to-data
@@ -254,7 +316,13 @@ streamlit run app.py
 ```
 
 ## Known gaps
-- VC-123's `�` cells are simulated (S01-D-010); the graph-level pause is Iteration 5.
+- VC-123's `�` cells are simulated (S01-D-010); the graph-level pause is tested in `test_graph.py`.
+- `enrich`'s tool-call branch (raw answer in `tool_calls`) has no test: `ScriptedChatModel` answers
+  as JSON content only. `format_pages` prints mixed lists as `pages 2, 3, 5` (joined Tables are
+  always consecutive, so not reached yet).
+- Staged verification (D-118): the VCs listed in `iterations/05-graph-pauses-tracing.md` under
+  "Deferred to the final iteration (D-118)" are checked in Iteration 7.
+- `ingested_at` is stamped per Table at assembly, so Tables of one Document differ by milliseconds.
 - PyMuPDF's "external" header (text above a borderless table) is ignored (S01-D-008).
 - A word hyphenated at a line end keeps a space in context text (`full- time`); not dehyphenated.
 - `collect_context` re-reads the page layout (and `find_tables`) on each call.

@@ -16,6 +16,7 @@ LEAVES = {
     errors.IndexMismatchError: (errors.VectorStoreError, "Pinecone"),
     errors.TracingUnreachableError: (errors.TracingError, "LangSmith"),
     errors.TracingAuthenticationError: (errors.TracingError, "LangSmith"),
+    errors.SandboxUnavailableError: (errors.SandboxError, "Docker"),
     errors.DocumentUnreadableError: (errors.DocumentError, None),
     errors.DocumentEncryptedError: (errors.DocumentError, None),
     errors.DocumentWithoutTextError: (errors.DocumentError, None),
@@ -94,3 +95,10 @@ def test_table_store_error_sits_directly_under_app_error() -> None:
     assert errors.TableStoreError.__bases__ == (errors.AppError,)
     assert not isinstance(error, errors.ExternalServiceError)
     assert error.user_message == "Couldn't save the table data on disk."
+
+
+def test_sandbox_error_is_an_external_service_named_docker() -> None:
+    """VC-238 (spec 02 §7 errors): SandboxError groups Docker failures under ExternalServiceError."""
+    assert errors.SandboxError.__bases__ == (errors.ExternalServiceError,)
+    assert errors.SandboxError.service == "Docker"
+    assert errors.SandboxUnavailableError.__bases__ == (errors.SandboxError,)

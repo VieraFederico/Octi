@@ -168,3 +168,44 @@ def test_env_example_documents_ingestion_max_retries() -> None:
     """VC-158 (spec 01 FR-155): the versioned example environment file lists the variable."""
     example = (settings_module.REPO_ROOT / ".env.example").read_text(encoding="utf-8")
     assert "INGESTION_MAX_RETRIES" in example
+
+
+def test_analyst_settings_default_to_2_retries_and_30_seconds(make_settings) -> None:
+    """VC-238 (spec 02 FR-241): unset → ANALYST_MAX_RETRIES 2 and SANDBOX_TIMEOUT_SECONDS 30."""
+    settings = make_settings()
+    assert settings.ANALYST_MAX_RETRIES == 2
+    assert settings.SANDBOX_TIMEOUT_SECONDS == 30
+
+
+def test_analyst_settings_accept_their_bounds(make_settings) -> None:
+    """VC-238 (spec 02 FR-241): 0 and 5 retries, 5 and 120 seconds are valid."""
+    assert make_settings(ANALYST_MAX_RETRIES="0").ANALYST_MAX_RETRIES == 0
+    assert make_settings(ANALYST_MAX_RETRIES="5").ANALYST_MAX_RETRIES == 5
+    assert make_settings(SANDBOX_TIMEOUT_SECONDS="5").SANDBOX_TIMEOUT_SECONDS == 5
+    assert make_settings(SANDBOX_TIMEOUT_SECONDS="120").SANDBOX_TIMEOUT_SECONDS == 120
+
+
+@pytest.mark.parametrize(
+    ("name", "raw_value"),
+    [
+        ("ANALYST_MAX_RETRIES", "6"),
+        ("ANALYST_MAX_RETRIES", "-1"),
+        ("ANALYST_MAX_RETRIES", "x"),
+        ("SANDBOX_TIMEOUT_SECONDS", "4"),
+        ("SANDBOX_TIMEOUT_SECONDS", "121"),
+        ("SANDBOX_TIMEOUT_SECONDS", "x"),
+    ],
+)
+def test_analyst_settings_out_of_range_are_rejected(make_settings, name: str, raw_value: str) -> None:
+    """VC-238 (spec 02 FR-241): 6 / 4 / 121 / x → InvalidSettingsError naming the variable."""
+    with pytest.raises(InvalidSettingsError) as caught:
+        make_settings(**{name: raw_value})
+    assert caught.value.fields == (name,)
+    assert name in caught.value.user_message
+
+
+def test_env_example_documents_analyst_settings() -> None:
+    """VC-238 (spec 02 FR-241): the versioned example environment file lists both variables."""
+    example = (settings_module.REPO_ROOT / ".env.example").read_text(encoding="utf-8")
+    assert "ANALYST_MAX_RETRIES" in example
+    assert "SANDBOX_TIMEOUT_SECONDS" in example
