@@ -281,3 +281,16 @@ uses `len(tables)` from the saved state.
 limit (not "computed from T", D-052).
 **Consequences**: `find_tables` runs once more per page (well under a second on the sample PDFs).
 **Status**: accepted by the student (2026-10-11).
+
+## S01-D-024: Sidebar Document clicks use a local Streamlit v2 component (Iteration 6)
+**Context**: The HTML expanders must keep opening without a rerun (D-072), while Document names
+must navigate within the same Streamlit session. Plain HTML cannot invoke a Python callback.
+**Decision**: Use the already-installed v2 component API with a static JavaScript shell. Render
+escaped Document markup as component data; a Document button emits its file name as a trigger.
+The existing details elements and global styles stay in use. Disable Document buttons while streaming.
+**Rejected**: native buttons with native expanders (changes the existing expansion presentation);
+ordinary links (open a new session and discard the paused run).
+**Consequences**: No new dependency. AppTest covers escaped markup and the Python navigation seam;
+the student checks browser clicks in the final iteration. User-approved edits also extend
+shared ui/chat.py and tests/stubs.py; spec 02 files are not edited.
+**Status**: accepted by the student (2026-10-11).

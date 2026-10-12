@@ -1,349 +1,183 @@
-# CONTEXT — Spec 01 Ingestion agent (after Iteration 5)
+# CONTEXT — Spec 01 Ingestion agent (after Iteration 6)
 
-Starting point: spec 00 complete (`specs/00-foundation-plan-artifacts/CONTEXT.md`, capsule
-`specs/00-foundation-frozen.md`). This file describes the codebase as it stands now.
+This is the current codebase handoff. The spec and plan remain the authority; implementation
+choices live in this directory's DECISIONS.md. Staged verification (D-118) applies.
 
 ## Current state
-- Spec 00 foundation unchanged in behaviour: typed `Settings` (fail-fast, names only), error tree,
-  redacting logging, LiteLLM / Pinecone / LangSmith factories, the two CLIs, the Streamlit shell
-  (chat with placeholder replies, PDF-only composer, empty Library and Documents), the error screen,
-  the offline pytest harness and one live smoke test.
-- Spec 01, Iteration 1 done:
-  - `Settings.INGESTION_MAX_RETRIES` (int 0–5, default 2; FR-155), documented in `.env.example`.
-  - Error tree: `DocumentError` group (`DocumentUnreadableError`, `DocumentEncryptedError`,
-    `DocumentWithoutTextError`, each carrying its fixed FR-105 … FR-107 sentence) and
-    `TableStoreError` directly under `AppError`.
-  - `agents/ingestion/pdf/document.py`: open PDF bytes or refuse them (FR-105 … FR-107), list pages
-    without selectable text (FR-119 page part), list pages whose images the summary must mention
-    (FR-121, 2 % area rule + repetition rule from 3 pages).
-  - `tests/pdf_fixtures.py`: in-memory fixture PDF builders (HTML through PyMuPDF's Story; S01-D-001).
-  - A-101 and A-102 proven (`tests/unit/test_pymupdf_assumptions.py`).
-- Spec 01, Iteration 2 done: pure cell cleaning in `pdf/cleaning.py` — flatten marked headers using
-  horizontal spans; convert numeric columns all-or-nothing with percent/currency hints; build a
-  DataFrame and collect first-column row labels. Original text is preserved on failed conversion.
-  Whole columns outside signed int64 range stay text (student-approved S01-D-007).
-- Spec 01, Iteration 3 done (spec v0.8):
-  - `pdf/tables.py`: every table PyMuPDF finds, then: fake tables dropped (DEBUG log), unreadable
-    tables flagged without data, header rows detected by clue (S01-D-008), tables continued on the
-    next page joined, then cleaned with `pdf/cleaning.py`. Returns `ExtractedTable`s.
-  - `pdf/context.py`: the five-field `TableContext` per Table by position and font (FR-123 … 126;
-    overlap rule S01-D-011).
-  - `scripts/make_sample_pdfs.py` writes the two committed sample PDFs from module-level constants
-    (D-070, D-107, S01-D-013); `data/tables/` is git-ignored.
-- Spec 01, Iteration 4 done (pure pieces around the LLM, and storing):
-  - `schemas.py` now also holds the SPEC §7 Pydantic models (`ColumnDescription`, `TableEnrichment`,
-    `ColumnMetadata`, `TableMetadata`, `CatalogEntry`; S01-D-014).
-  - `prompts.py`: frozen prompt v1 (equal to SPEC §7), two worked examples, `build_messages`.
-  - `validation.py`: the five checks of FR-131 as one-sentence feedback (S01-D-015).
-  - `indexing.py`: metadata assembly, flat Index metadata, 38 KB guard, embedding text,
-    `entry_from_record`, `load_catalog`, and `write_document` (safe write order, rollback; S01-D-018).
-  - `services/table_store.py`: Parquet Table store (`write_table`, `read_table`, `delete_tables`).
-  - `services/vector_store.py`: + `open_index`, `list_records`, `find_versions`, `upsert_records`,
-    `delete_records` (S01-D-017).
-  - `tests/stubs.py`: + `extracted_table`, `FakeEmbeddings`, `FakePineconeIndex`; `tests/conftest.py`:
-    + `table_store_dir`.
-- Spec 01, Iteration 5 done (parallel mode, D-115; staged verification, D-118): the ingestion graph.
-  - `state.py`: light `IngestionState`, `RunStore` (per-run bytes, open document, full Tables),
-    `IngestionDeps` / `make_deps`, `PauseQuestion`, `RunResult` (S01-D-022).
-  - `nodes.py`: the nine nodes, the two `interrupt` pauses and the chat sentences (S01-D-021).
-  - `graph.py`: routers, `build_graph` (in-memory checkpointer), `run_ingestion` / `resume_ingestion`
-    (updates stream, paused vs finished, store closed at the end), FR-143 limit from a pre-count
-    (S01-D-023), FR-153 run config, FR-154 tracing scope.
-  - `tests/stubs.py`: + `ScriptedChatModel`, `enrichment_for`, `invalid_enrichment`.
-- Not yet: the UI changes (Iteration 6), live checks and README (Iteration 7).
-
-## Contract (Iteration 5) — integrated
-Parallel mode (D-115). Written by the lead before the packages; every body is now implemented and
-the signatures are unchanged. Kept as the reference for the graph's shapes (the docstrings in the
-code hold the binding detail).
-- **Shared, lead-owned:** `agents/ingestion/state.py` — `IngestionState` (TypedDict,
-  `total=False`; `assembled` / `skipped` append via `operator.add`, other keys replace), `TableState`,
-  `SkippedPart` (`kind` `no_text_pages` | `unreadable_table` | `table`, `pages`, `table_id`, `caption`),
-  `AssembledTable` (`metadata` = `TableMetadata.model_dump(mode="json")`, `record_metadata`), `Outcome`
-  (`status` `failed` | `cancelled` | `no_tables` | `nothing_indexed` | `indexed`, `message`), `Choice`,
-  `PauseQuestion` (`pause`, `intro`, `bullets`, `question`, `choices`), `question_text`, `RunResult`
-  (`thread_id`, `status` `paused` | `finished`, `question`, `values`), `RunData` (`pdf`, `document`,
-  `tables` by id), `RunStore` (`open`, `get`, `close`, `thread_ids`), `IngestionDeps(settings, embeddings,
-  index, make_chat_model=make_chat_model, runs=RunStore())`, `make_deps(settings, client=None)`.
-  `tests/stubs.py` — `ScriptedChatModel(answers)` (`build`, `with_structured_output`, `invoke`; records
-  `model_names`, `structured`, `calls`), `enrichment_for(table, name=)`, `invalid_enrichment(table)`.
-  `tests/unit/test_state.py`. Decisions S01-D-021 (wording), S01-D-022 (deps), S01-D-023 (recursion limit).
-- **Node shape:** `node(state, deps) -> dict` (partial update). A node that writes `outcome` ends the run.
-- **Run input state:** `{thread_id, source_file, max_retries, assembled: [], skipped: []}`.
-- **WP-A — nodes** owns `agents/ingestion/nodes.py`, `tests/unit/test_nodes.py`: `format_pages`,
-  `load_pdf`, `extract_tables`, `ask_unreadable`, `collect_context`, `enrich`, `validate`, `next_table`,
-  `ask_skipped`, `index`; message constants `FAILED_ENRICH`, `FAILED_INDEX`, `PREVIOUS_NOT_REMOVED`,
-  `NO_TABLES`, `NOTHING_INDEXED`, `CANCELLED` (already written). Pause nodes call
-  `langgraph.types.interrupt(PauseQuestion)` and act on the resume value.
-- **WP-B — wiring and tracing** owns `agents/ingestion/graph.py`, `tests/unit/test_graph_routing.py`,
-  `tests/unit/test_tracing_config.py`: `NODE_NAMES`, the eight `route_after_*` routers (return a node
-  name or `langgraph.graph.END`), `recursion_limit`, `table_upper_bound`, `run_config`, `tracing_scope`,
-  `build_graph`, `run_ingestion`, `resume_ingestion`.
-- **WP-C — graph tests** owns `tests/unit/test_graph.py`: end-to-end over `build_graph` +
-  `run_ingestion` / `resume_ingestion` with fixture PDFs, `ScriptedChatModel`, `FakeEmbeddings`,
-  `FakePineconeIndex`, `table_store_dir`. Red until A and B land.
-- **Waves:** one wave, A, B and C in parallel; the lead integrated (no seam needed a fix).
+- Foundation: typed settings, error families, redacting logging, service factories, startup checks,
+  Streamlit shell, model picker, New chat modal, offline pytest guards. Spec 02 is being implemented
+  concurrently; its startup sandbox check is now part of the shared shell.
+- Iterations 1–3: PDF opening and unreadable/image detection, geometric table extraction, multi-page
+  joins, header flattening, numeric cleaning, contextual text, and deterministic sample PDFs.
+- Iteration 4: frozen enrichment prompt, structured models, deterministic validation, embedding
+  text and flat records, Parquet storage, catalog decoding, safe write order and rollback.
+- Iteration 5: the ingestion graph, validation retry loop, unreadable/skipped pauses, light state,
+  per-run data store, in-memory checkpointer, tracing labels and settings-controlled tracing scope.
+- Iteration 6: PDF submission starts ingestion after catalog checks. A structured assistant message
+  streams status, pauses with buttons, and retains cards, skipped parts, image notes and the later
+  question placeholder. Both upload modals are implemented. The Library and sidebar use the session
+  catalog, and Document controls navigate to the filtered Library. Busy controls disable before
+  streaming; New chat at a pause closes the run's data store and discards the runtime.
+- Catalog loads once per session; an upload retries a failed load before any run. An indexed result
+  updates the session catalog directly. A cleanup warning keeps possible old-version leftovers.
+- Not yet: final VC-by-VC verification, browser/manual and live checks, README updates (Iteration 7).
 
 ## File map
-Spec 01 (new or changed this spec):
-- `agents/__init__.py`, `agents/ingestion/__init__.py` — package markers (docstring only).
-- `agents/ingestion/pdf/__init__.py` — package marker: deterministic PDF reading, no LLM (D-084).
-- `agents/ingestion/pdf/document.py` — `open_document`, `pages_without_text`, `is_repeated`,
-  `reported_image_pages`; constants `MIN_IMAGE_PAGE_FRACTION`, `MIN_PAGES_FOR_REPETITION`.
-- `agents/ingestion/pdf/cleaning.py` — `flatten_headers`, `clean_column`, `build_dataframe`,
-  `row_headers`, `dtype_name`, `rows_as_text`; deterministic cells-to-data conversion (and the
-  frame-to-text printing the prompt and preview share), no PDF or external I/O.
-- `agents/ingestion/pdf/tables.py` — `document_sha`, `make_table_id`, `extract_tables`; constants
-  `MAX_HEADER_ROWS`, `YEAR_RANGE`, `UNREADABLE_SHARE`, `MERGE_TOLERANCE`.
-- `agents/ingestion/pdf/context.py` — `collect_context`; constants `MAX_PARAGRAPH_CHARS` (600),
-  `MAX_CONTEXT_CHARS` (2,000), `MAX_CAPTION_FALLBACK_LINES`, `MAX_HEADING_WORDS`, `LARGER_FONT`.
-- `agents/ingestion/schemas.py` — `ExtractedTable`, `TableContext` (plain dataclasses), type alias `Box`;
-  the §7 Pydantic models `ColumnDescription`, `TableEnrichment`, `ColumnMetadata`, `TableMetadata`,
-  `CatalogEntry`.
-- `agents/ingestion/prompts.py` — `SYSTEM_PROMPT`, `FEW_SHOT_EXAMPLES` (`FewShotExample`),
-  `build_messages`; constant `ROWS_TO_LLM`.
-- `agents/ingestion/validation.py` — `validate`; constant `GENERIC_NAME`.
-- `agents/ingestion/indexing.py` — `assemble_metadata`, `index_metadata`, `exceeds_size_guard`,
-  `embedding_text`, `entry_from_record`, `load_catalog`, `write_document`, `TableToIndex`,
-  `WriteResult`; constants `ROW_HEADERS_STORED`, `PREVIEW_ROWS`, `PREVIEW_CELL_CHARS`,
-  `PREVIEW_MAX_CHARS`, `METADATA_LIMIT_BYTES`.
-- `services/table_store.py` — `TABLE_STORE_DIR`, `write_table`, `read_table`, `delete_tables`.
-- `agents/ingestion/state.py` — graph state types, `RunStore`, `IngestionDeps`, `make_deps`,
-  `PauseQuestion`, `question_text`, `RunResult`.
-- `agents/ingestion/nodes.py` — the nine nodes, `format_pages`, chat-sentence constants.
-- `agents/ingestion/graph.py` — `NODE_NAMES`, routers, `recursion_limit`, `table_upper_bound`,
-  `run_config`, `tracing_scope`, `build_graph`, `run_ingestion`, `resume_ingestion`.
-- `tests/unit/test_state.py` (5), `tests/unit/test_nodes.py` (31), `tests/unit/test_graph_routing.py`
-  and `tests/unit/test_tracing_config.py` (43), `tests/unit/test_graph.py` (15, end to end).
-- `scripts/make_sample_pdfs.py` — sample PDF generator and the table-data constants.
-- `data/sample_pdfs/acme-annual-report-2023.pdf`, `data/sample_pdfs/informe-regional-2024.pdf` —
-  committed, generated (byte-identical on re-run with PyMuPDF 1.28.2).
-- `.gitignore` — + `data/tables/`.
-- `services/settings.py` — + `INGESTION_MAX_RETRIES`.
-- `services/errors.py` — + `DocumentError` leaves, `TableStoreError` (tree in the module docstring).
-- `services/vector_store.py` — spec 00's check/create + `open_index`, `list_records`, `find_versions`,
-  `upsert_records`, `delete_records` (agent-agnostic; constants `UPSERT_BATCH_SIZE`, `FETCH_BATCH_SIZE`,
-  `DELETE_BATCH_SIZE`).
-- `.env.example` — + "Ingestion agent" section with `INGESTION_MAX_RETRIES`.
-- `tests/pdf_fixtures.py` — fixture PDF builders (plain module, like `tests/stubs.py`).
-- `tests/unit/test_pymupdf_assumptions.py` — A-101, A-102.
-- `tests/unit/test_document.py` — `pdf/document.py` (VC-105 … VC-107 function level, VC-123 page
-  part, VC-125, VC-169 image part). Not to be confused with `test_documents.py` (sidebar UI).
-- `tests/unit/test_cleaning.py` — VC-112/114/115 grid part, VC-117 … VC-121, VC-122 hints;
-  decimal-style, missing, original-text and signed-int64-boundary regressions (60 cases).
-- `tests/unit/test_tables.py` — VC-108 … VC-114, VC-116, VC-123 table part (21 cases).
-- `tests/unit/test_sample_pdfs.py` — VC-161: repeatable output, committed = fresh, every table's
-  values equal the constants, constants consistent (12 cases).
-- `tests/unit/test_context.py` — VC-126 … VC-129, VC-169 context part, sample captions (17 cases).
-- `tests/unit/test_prompts.py` — VC-131 (message part), VC-132, VC-122 (prompt part), VC-165 (14 cases).
-- `tests/unit/test_validation.py` — VC-133 (a)–(e) and edge cases; few-shot answers pass (22 cases).
-- `tests/unit/test_indexing.py` — VC-138, VC-139, VC-140 … VC-143, VC-144 (function part), VC-147
-  (write part), VC-172 (data part), VC-174, rollback and same-bytes cases (32 cases).
-- `tests/unit/test_table_store.py` — round trip with exact dtypes, overwrite, delete, disk and id errors.
-- `tests/unit/test_vector_store.py` — + the record functions against `FakePineconeIndex`.
-- `tests/unit/test_settings.py`, `tests/unit/test_errors.py` — extended (VC-158, VC-011).
+Ingestion implementation:
+- agents/ingestion/schemas.py — ExtractedTable, TableContext, enrichment/metadata models, CatalogEntry.
+- agents/ingestion/pdf/document.py — opening, no-text pages, significant images and repetition.
+- agents/ingestion/pdf/cleaning.py — header flattening, numeric parsing, row labels, dtype/text helpers.
+- agents/ingestion/pdf/tables.py — SHA/id helpers, header clues, filtering, joining and extraction.
+- agents/ingestion/pdf/context.py — geometric and font-based Table context, bounded in characters.
+- agents/ingestion/prompts.py — frozen system prompt, two examples and retry-aware messages.
+- agents/ingestion/validation.py — five deterministic checks producing feedback sentences.
+- agents/ingestion/indexing.py — metadata/record builders, size guard, embedding text, catalog decoding,
+  write_document, TableToIndex and WriteResult.
+- agents/ingestion/state.py — light state/result/pause shapes, RunStore, IngestionDeps and make_deps.
+- agents/ingestion/nodes.py — nine graph nodes, format_pages, safe outcome sentences.
+- agents/ingestion/graph.py — routers, build_graph, run/resume, computed limit and tracing scope.
+- services/table_store.py — atomic Parquet writes, exact dtype reads, deletion and id validation.
+- services/vector_store.py — index factories/checks, paginated list/fetch/version lookup and mutations.
+- scripts/make_sample_pdfs.py — deterministic sample generator and importable evaluation constants.
+- data/sample_pdfs/acme-annual-report-2023.pdf, informe-regional-2024.pdf — generated committed PDFs.
+- data/tables/ — ignored Parquet Table store; uploaded PDFs are never saved.
 
-Spec 00 (unchanged):
-- `services/logging_setup.py`, `services/llm.py`, `services/tracing.py`, `services/health.py` —
-  logging, LiteLLM, LangSmith, service checks (`vector_store.py` is listed under spec 01 above).
-- `scripts/setup_index.py`, `scripts/check_services.py` — thin CLIs.
-- `app.py` and `ui/` — Streamlit entry and views (`chat.py`, `sidebar.py`, `documents.py` with the
-  `load_documents()` seam, `library.py` empty state, `new_chat.py`, `error_screen.py`, `bubble.py`,
-  `logo.py`, `style.py`, `icons.py`, `startup.py`).
-- `tests/conftest.py` (autouse network and `.env` guards; `fake_env`, `make_settings`),
-  `tests/stubs.py`, spec 01 adds the fixture `table_store_dir`, `tests/unit/`, `tests/functional/` (AppTest), `tests/live/test_smoke.py`.
-- `README.md`, `requirements.txt` (spec 01 deps pinned: langgraph 1.2.14, pandas 3.0.6,
-  pyarrow 25.0.1, pymupdf 1.28.2), `pytest.ini`, `.gitattributes` (LF everywhere, D-044).
+Iteration 6 UI:
+- ui/catalog.py — session load/failure flags, result updates, grouping/lookups and Library navigation.
+- ui/upload.py — pending-upload processing, hash-first decisions and both confirmation modals.
+- ui/ingestion.py — active run/runtime, streaming presentation, run history, pause/resume and abandon.
+- ui/table_card.py — shared escaped expandable card with a scrolling preview.
+- ui/chat.py — in-memory attachment extraction, pending upload and structured message rendering.
+- ui/documents.py — session Document previews, native HTML expanders, local v2 navigation component.
+- ui/library.py — newest-first grouping, non-typeable Document filter and shared cards.
+- ui/sidebar.py — navigation, streaming disablement and session Documents.
+- ui/new_chat.py — erase/cancel warning policy, including paused-run cleanup.
+- app.py — startup, session catalog, pending upload, sidebar/dialogs and selected view.
+- assets/styles.css — existing theme/layout and Document button styling.
+- ui/startup.py, ui/error_screen.py — owned by the concurrent spec 02 work; not edited by Iteration 6.
 
-## Public interfaces (owner → read the code there; SPEC §7 is the contract)
-Spec 01:
-- Retry limit: `Settings.INGESTION_MAX_RETRIES` → `services/settings.py`.
-- Document errors: `DocumentError` + three leaves (no-argument constructors, fixed `message`),
-  `TableStoreError(user_message)` → `services/errors.py`.
-- Open a PDF: `open_document(data: bytes) -> pymupdf.Document` (caller closes it) →
-  `agents/ingestion/pdf/document.py`.
-- Pages without text: `pages_without_text(doc) -> list[int]` (1-based) → `agents/ingestion/pdf/document.py`.
-- Image notes: `reported_image_pages(doc) -> list[int]` (1-based, sorted) → `agents/ingestion/pdf/document.py`.
-- Repetition rule (images, and running text in `pdf/context.py`, FR-124): `is_repeated(pages_with_it, page_count)`
-  → `agents/ingestion/pdf/document.py`.
-- Marked headers: `flatten_headers(header_rows, spans, column_spans)` → `agents/ingestion/pdf/cleaning.py`.
-- Typed column plus hints: `clean_column(values)` → `agents/ingestion/pdf/cleaning.py`.
-- DataFrame plus hints by name: `build_dataframe(names, rows)` → `agents/ingestion/pdf/cleaning.py`.
-- First-column labels: `row_headers(frame)` → `agents/ingestion/pdf/cleaning.py`.
-- Document hash: `document_sha(data) -> str` (full hex) → `agents/ingestion/pdf/tables.py`.
-- Ids: `make_table_id(sha, page, position) -> str` → `agents/ingestion/pdf/tables.py`.
-- Tables: `extract_tables(doc, sha) -> list[ExtractedTable]`, reading order → `agents/ingestion/pdf/tables.py`.
-- Extracted Table: `ExtractedTable(table_id, pages, parts, columns, frame, hints, row_headers,
-  unreadable)`; `parts` = `[(page, box)]`; unreadable → `frame None`, no columns → `agents/ingestion/schemas.py`.
-- Context: `collect_context(doc, table) -> TableContext(section, caption, before, after, footnotes)`
-  → `agents/ingestion/pdf/context.py`, `agents/ingestion/schemas.py`.
-- Models (SPEC §7): `TableEnrichment` (LLM output), `TableMetadata`, `CatalogEntry` (= metadata +
-  `document_sha`, `ingested_at` datetime, `preview`, `n_rows`, `n_cols`, `row_headers_total`; its
-  `row_headers` holds at most 50) → `agents/ingestion/schemas.py`.
-- Prompt: `build_messages(table, context, source_file, previous=None, feedback=()) -> list[BaseMessage]`
-  (system, two example pairs, human) → `agents/ingestion/prompts.py`.
-- Validation: `validate(answer: TableEnrichment | dict, table) -> list[str]` (empty = valid) →
-  `agents/ingestion/validation.py`.
-- Record building: `assemble_metadata(enrichment, table, source_file)`, `index_metadata(metadata, table,
-  document_sha, ingested_at=None) -> dict`, `exceeds_size_guard(flat)`, `embedding_text(metadata)`,
-  `entry_from_record(record)` → `agents/ingestion/indexing.py`.
-- Storing: `write_document(settings, source_file, document_sha, tables: Sequence[TableToIndex], *,
-  embeddings, index) -> WriteResult(table_ids, previous_removed)`; `load_catalog(settings, index=None) ->
-  list[CatalogEntry]` → `agents/ingestion/indexing.py`.
-- Table store (spec 02 reads it): `read_table(table_id) -> DataFrame`, `write_table`, `delete_tables`
-  → `services/table_store.py`.
-- Records in Pinecone: `open_index(settings, client=None)`, `list_records(index, namespace)`,
-  `find_versions(index, namespace, source_file)`, `upsert_records(index, namespace, records)`,
-  `delete_records(index, namespace, ids)` → `services/vector_store.py`.
-- Sample PDFs: `write_sample_pdfs(out_dir=OUT_DIR) -> list[Path]`, `build_acme_pdf()`,
-  `build_informe_pdf()`, `ACME_FILE`, `INFORME_FILE` → `scripts/make_sample_pdfs.py`
-  (`python -m scripts.make_sample_pdfs`).
-- Sample table data (import from `scripts.make_sample_pdfs`; spec 03 derives expected answers):
-  - `ACME_YEARS` = (2021, 2022, 2023).
-  - `ACME_INCOME[year][column]`, `ACME_INCOME_COLUMNS` = Revenue (gross), Revenue (net), Net income,
-    Net margin (USD millions; margin in %). Table 1, page 1.
-  - `ACME_RD[year][column]`, `ACME_RD_COLUMNS` = R&D expenses (USD millions), R&D staff. Table 2, page 1.
-  - `ACME_REGIONAL_NET_SALES[region][year]` (USD millions; sums to net revenue) and
-    `ACME_MARKET_SHARE[region][year]` (%), `ACME_MARKET_SHARE_YEARS` = (2022, 2023); regions
-    Patagonia, Cuyo, Pampa, NOA, NEA, no national row. Table 3, page 2.
-  - `ACME_HEADCOUNT[department][column]`, `ACME_HEADCOUNT_COLUMNS` = Employees 2022, Employees 2023,
-    Change (%; `None` = n/a). Table 4, page 3 (right column).
-  - `ACME_MONTHLY["YYYY-MM"][column]` = Net sales (USD thousands), Change vs previous month (%);
-    each year sums to net revenue × 1000. Table 5, pages 4–5.
-  - `INFORME_YEARS` = (2022, 2023); `INFORME_POPULATION[region][year]` (thousands) — Cuadro 1;
-    `INFORME_LABOUR[region][column]`, `INFORME_LABOUR_COLUMNS` = Tasa de desempleo, Tasa de empleo
-    (%) — Cuadro 2.
-- Ingestion graph (UI in Iteration 6): `graph = build_graph(make_deps(settings))` once, then
-  `run_ingestion(graph, deps, source_file, pdf, on_update=...) -> RunResult` and
-  `resume_ingestion(graph, deps, thread_id, "continue" | "index" | "cancel")`; `RunResult.status`
-  `paused` (render `question`: intro, bullets, question, choices) or `finished`
-  (`values["outcome"]`, `values["assembled"][i]["record_metadata"]` → `entry_from_record`,
-  `values["skipped"]`, `values["image_pages"]`). New chat at a pause: `deps.runs.close(thread_id)`
-  → `agents/ingestion/graph.py`, `agents/ingestion/state.py`.
-- Test fakes: `ScriptedChatModel(answers)` (`build` as `make_chat_model`), `enrichment_for(table)`,
-  `invalid_enrichment(table)`, `extracted_table(columns, rows, table_id=, pages=)`, `FakeEmbeddings(dimension, error, events)`,
-  `FakePineconeIndex(fail_on, fail_after, error, page_size, events)` (+ `put`, `ids`, `calls`,
-  `upsert_batches`), fixture `table_store_dir` → `tests/stubs.py`, `tests/conftest.py`.
-- Test fixtures: `Page(blocks, images)`, `make_pdf(*pages) -> bytes`, `heading`, `paragraph`,
-  `table(header, rows, merged_header=...)`, `Image(rect, shade)`, `image_covering(fraction, shade=)`,
-  `image_only_page(shade=)`, `text_page(text, *images)`, `encrypt(pdf, user_password=)`, constants
-  `PAGE_RECT`, `MARGIN`, `CONTENT_RECT`, `CSS` → `tests/pdf_fixtures.py`.
-Spec 00 (unchanged):
-- Configuration: `get_settings()`, `Settings.from_mapping()` → `services/settings.py`.
-- Logging: `configure_logging(settings)` → `services/logging_setup.py`.
-- Models: `make_chat_model`, `make_embeddings`, `list_proxy_models`, `translate_proxy_errors` → `services/llm.py`.
-- Tracing client: `make_langsmith_client`, `translate_tracing_errors` → `services/tracing.py`.
-- Index: `check_index` → `IndexStatus`, `ensure_index`, `make_pinecone_client` → `services/vector_store.py`.
-- Service check: `run_checks(load_settings, clients)`, `Clients` → `services/health.py`.
-- App start-up: `load_startup()` → `Startup` → `ui/startup.py`; conversation in session key `messages`
-  → `ui/chat.py`; sidebar Documents seam `load_documents()` → `ui/documents.py`; Library view
-  `render_library()` → `ui/library.py`.
+Tests:
+- tests/conftest.py — offline socket and repository secret-file guards, fake settings, table_store_dir.
+- tests/stubs.py — existing model/embedding/index fakes plus catalog_entry and ScriptedIngestionRunner.
+- tests/pdf_fixtures.py — in-memory fixture PDFs, including tables, images and encrypted documents.
+- tests/unit/test_document.py, test_pymupdf_assumptions.py, test_cleaning.py, test_tables.py,
+  test_context.py, test_sample_pdfs.py — deterministic PDF/data coverage from Iterations 1–3.
+- tests/unit/test_prompts.py, test_validation.py, test_indexing.py, test_table_store.py,
+  test_vector_store.py — prompt, metadata, write order, rollback and storage coverage.
+- tests/unit/test_state.py, test_nodes.py, test_graph.py, test_graph_routing.py,
+  test_tracing_config.py — graph, routes, pauses and trace configuration.
+- tests/unit/test_catalog_ui.py, test_upload.py, test_table_card.py, test_ingestion_ui.py — new smoke tests.
+- tests/unit/test_chat.py, test_documents.py, test_new_chat.py — chat and existing sidebar/modal checks.
+- tests/functional/test_ingestion_flow.py, test_library.py — new offline AppTest smoke flows.
+- tests/functional/conftest.py — fake catalog and ready sandbox factory; failure tests can override it.
+- Existing functional shell/modal/error-screen tests remain regression checks.
+- tests/analyst_stubs.py and spec 02 files belong to the concurrent implementation, not this iteration.
+
+## Public interfaces
+PDF and data:
+- open_document(data) -> pymupdf.Document; pages_without_text, reported_image_pages -> list[int].
+- document_sha(data), make_table_id(sha, page, position), extract_tables(doc, sha).
+- flatten_headers(header_rows, spans, column_spans), clean_column(values), build_dataframe(names, rows),
+  row_headers(frame), dtype_name(series), rows_as_text(frame, limit, max_cell=None).
+- collect_context(doc, table) -> TableContext(section, caption, before, after, footnotes).
+- ExtractedTable carries id/pages/parts/columns/frame/hints/row_headers/unreadable (schemas.py).
+
+Enrichment and storage:
+- build_messages(table, context, source_file, previous=None, feedback=()) -> messages (prompts.py).
+- validate(answer: TableEnrichment | dict, table) -> feedback sentences (validation.py).
+- assemble_metadata(enrichment, table, source_file), index_metadata(metadata, table, document_sha,
+  ingested_at=None), exceeds_size_guard, embedding_text, entry_from_record (indexing.py).
+- write_document(settings, source_file, document_sha, tables, *, embeddings, index) ->
+  WriteResult(table_ids, previous_removed); load_catalog(settings, index=None) -> list[CatalogEntry].
+- CatalogEntry includes at most 50 row_headers, row_headers_total, timezone-aware ingested_at,
+  document_sha, preview, n_rows and n_cols, in addition to TableMetadata (D-116).
+- read_table(table_id) -> DataFrame, write_table(table_id, frame), delete_tables(ids) (table_store.py).
+- open_index, list_records, find_versions (fetch_by_metadata), upsert_records and delete_records
+  take the namespace explicitly (vector_store.py).
+
+Graph:
+- deps = make_deps(settings); graph = build_graph(deps), kept together for the session.
+- run_ingestion(graph, deps, source_file, pdf, thread_id=None, on_update=None) -> RunResult.
+- resume_ingestion(graph, deps, thread_id, continue/index/cancel, on_update=None) -> RunResult.
+- RunResult: thread_id, status paused/finished, question and values. PauseQuestion: pause, intro,
+  bullets, question and choices (value/label). on_update(node, partial_update) receives node updates.
+- Finished values contain outcome, assembled[i].record_metadata, skipped and image_pages.
+- IngestionDeps holds settings, embeddings, index, chat factory and runs; RunStore open/get/close.
+
+UI/session contract:
+- catalog, catalog-loaded, catalog-attempted — cached entries and load state (ui/catalog.py).
+- ingestion-settings — startup's typed settings; no settings values enter the message history.
+- ensure_catalog(state, settings, loader=None, retry=False), update_catalog(state, entries,
+  previous_removed=), documents(state), by_hash, by_name, open_library(state, name).
+- library-filter — Document dropdown; view = Chat/Library. open_library sets both (ui/catalog.py).
+- pending-upload — {name, pdf, text, announced?}; bytes only in memory (ui/upload.py).
+- upload-confirming — identical/replace decision. process_pending_upload runs before sidebar rendering;
+  render_upload_dialog draws the persistent modal with Keep/Open or Cancel/Replace.
+- active-ingestion — reference to the structured assistant message; ingestion-runtime = (graph, deps).
+- ingestion-pdf — queued bytes, removed before run_ingestion transfers them into RunStore.
+- queue_run, is_busy, is_streaming, abandon_run, status_line, render_run_message (ui/ingestion.py).
+- Run message: role/content/kind=ingestion/thread_id/source_file/status/lines/entries/skipped/
+  image_pages/question/text; progress only while active; resume only after a pause choice.
+  entries are CatalogEntry objects; the message holds no PDF bytes or full DataFrames.
+- render_table_card(entry), table_card_html(entry) (ui/table_card.py).
+- load_documents, documents_html(..., navigable=False, disabled=False), render_documents(disabled=)
+  (ui/documents.py). The local component emits only a validated file name; details stay in the browser.
+- ScriptedIngestionRunner(results, steps=None): one RunResult per start/resume, optional per-call
+  [(node, update), ...] steps, calls log and a local RunStore (tests/stubs.py).
+
+Sample data (scripts/make_sample_pdfs.py):
+- ACME_YEARS (2021–2023); ACME_INCOME/ACME_INCOME_COLUMNS, ACME_RD/ACME_RD_COLUMNS,
+  ACME_REGIONAL_NET_SALES, ACME_MARKET_SHARE/ACME_MARKET_SHARE_YEARS,
+  ACME_HEADCOUNT/ACME_HEADCOUNT_COLUMNS, ACME_MONTHLY.
+- Informe sample: INFORME_YEARS, INFORME_POPULATION, INFORME_LABOUR/INFORME_LABOUR_COLUMNS.
+- ACME_FILE, INFORME_FILE, build_acme_pdf, build_informe_pdf, write_sample_pdfs(out_dir=OUT_DIR).
+- Regional sales sum to net revenue; monthly sales sum to net revenue ×1000. Regions: Patagonia,
+  Cuyo, Pampa, NOA, NEA, with no national row. ACME has five Tables; Informe has two.
 
 ## Conventions & invariants
-- Raise only leaf errors; chain library errors with `from exc`; show only `user_message` to users.
-- `DocumentError` leaves are raised with no argument (`raise DocumentEncryptedError()`); their sentence
-  is the spec's, verbatim (S01-D-004).
-- PyMuPDF documents are never wrapped (D-084); whoever calls `open_document` closes the document
-  (`with open_document(data) as doc:`). The PDF bytes are never written to disk (FR-101).
-- Page numbers in every public result are 1-based (`page.number + 1`).
-- Cleaning helper contracts are S01-D-006. Header spans are `(x0, x1)` or `None`, aligned with
-  rectangular marked header rows; `column_spans` supplies each column's horizontal extent.
-  Header-row detection belongs to Iteration 3, not `flatten_headers`.
-- A cleaned column is an `int64` / `float64` Series, or an object Series preserving original text
-  and missing markers; metadata later calls the latter dtype `text`. Numeric hints are distinct
-  first-seen strings. The builder returns hints for every column name, including empty lists.
-- Decimal style is chosen across the column before strict separator parsing; an incompatible cell
-  keeps the whole column text with no hints (FR-116/117). Percent values keep their written scale.
-  `Decimal` preserves whole-number precision before conversion. Only columns requiring int64 are
-  range-checked (S01-D-007); gaps/fractions still use the required float64 dtype.
-- Row headers examine only the first column, omit FR-115 missing markers, retain original labels
-  and leave the first column in the DataFrame.
-- Extraction pipeline per table: `< 2 columns` → drop; unreadable → flag; header clues (S01-D-008)
-  → `no data row` / `no filled data cell` → drop; join; flatten the first part's header; clean.
-  `flatten_headers` gets `(x0, x1)` spans, never full boxes.
-- Positions count every table PyMuPDF finds on a page, dropped ones included (S01-D-009).
-- Context blocks: outside every table box, not running text (`is_repeated`), not a bare page number,
-  overlapping the Table by half the narrower width (S01-D-011); MuPDF blocks are split by column;
-  ligatures expanded (S01-D-012).
-- Sample PDFs are drawn from the script's constants only; change the data there, regenerate, commit
-  both PDFs.
-- Spec §7 code constants live as named module constants next to the code that uses them.
-- LLM output is meaning only; every fact comes from code (BR-101). PDF-derived text goes into the
-  prompt only inside a fence, a table cell or a field value, and any run of 3+ backticks becomes
-  apostrophes (BR-102). The system message holds no per-call data.
-- `validate` returns shape sentences alone when the answer does not parse; otherwise checks 2–5 together
-  (S01-D-015). Feedback sentences are for the model and traces, never for the chat (BR-106).
-- The Index record's metadata is flat (strings, numbers, lists of strings); `row_headers` are cut to 50
-  with `row_headers_total`. Guard: UTF-8 JSON bytes <= 38 * 1024 (S01-D-020).
-- Write order (`write_document`): read same-name records, embed, Parquet files, upsert, delete stale
-  records then their files. A failure before step 4 removes only ids this run created (S01-D-018).
-- `read_table` returns the frame as extraction built it: text columns `object` with `None` gaps
-  (S01-D-019). Table ids are file names: ids with a path separator are refused.
-- Record functions take the namespace explicitly and know nothing about tables (D-084).
-- A fake class that defines a method named `list` must define it last (the name shadows the builtin in
-  later annotations in the class body).
-- `pymupdf.open(stream=..., filetype="pdf")` raises `pymupdf.FileDataError` (also for empty bytes,
-  via its subclass `EmptyFileError`) — the only exception `open_document` translates.
-- One module per external service holds its client factory and error translation (D-034); services
-  never import agents (D-084).
-- Never read `os.environ` outside `services/settings.py` (lint test).
-- Tests: offline; Given/When/Then comments; the VC id in each docstring; stubs from `tests/stubs.py`,
-  fixture PDFs from `tests/pdf_fixtures.py` (built in memory per test, nothing binary committed);
-  pytest fixtures by parameter name; no test imports another test module.
-- Keep the repo LF (`.gitattributes`); files edited from the Windows side may come back CRLF.
-- Graph: nodes are `node(state, deps) -> dict` (partial update); a node writing `outcome` ends the
-  run; `assembled` / `skipped` are appended (`operator.add`), all else replaced. The state holds no
-  bytes, DataFrame or PyMuPDF object (BR-111); those stay in `deps.runs`, closed by
-  `run_ingestion` / `resume_ingestion` when the run finishes or raises, kept while paused.
-  Pause nodes call `interrupt` by its module name so node tests can patch it. Tests never run a
-  graph with tracing on; `tracing_scope` tests pass a stub client.
-- Course reuse is credited by title in README › Credits, never by `sources/` path.
+- Never read secret files, install/download, commit/push, or edit the protected root/spec documents.
+- Decisions not already settled require the student; spec-local accepted choices use S01-D-NNN.
+- Offline tests only: stubs, fake settings, network guard. Live/manual checks belong to the student.
+- TDD, Given/When/Then and smoke coverage during feature iterations; remaining VCs go to Iteration 7
+  under staged verification (D-118). Each iteration's full offline suite must be green.
+- User-visible chat/Library/sidebar messages do not name backend services or expose raw failures.
+- PDF text is untrusted data: escaped in UI HTML, fenced/neutralized in prompts; feedback is not UI text.
+- LLM output supplies meaning only; ids, names of columns, dtypes, pages and row labels come from code.
+- Graph state is light (at most 20 rows per Table); bytes/documents/frames are only in RunStore.
+- Pauses keep the store; finish, failure or abandoned conversation closes it. New chat also drops
+  the runtime/checkpointer. Browser refresh loses a paused run by design.
+- The composer and model picker are disabled while active. Sidebar navigation/Document buttons are
+  disabled while streaming and enabled at pauses. Controls are rendered before the blocking call.
+- Catalog load failure is remembered, with generic Library/sidebar text. PDF submission retries first.
+- A successful run updates from its own results, never a post-run catalog reload (eventual consistency).
+- Safe writes: same-name lookup, embeddings, atomic Parquet, batched upsert, old records then files.
+  Rollback removes only new ids; an old same-byte version is never deleted on a failed write.
+- read_table restores object text columns and None gaps. Table ids containing separators are refused.
+- Row headers: 50 stored, 10 on cards, full count separately. Preview: five pipe-delimited rows,
+  40 characters per cell, total 2,000; wide text scrolls inside its own box.
+- Pure extraction uses 1-based pages and geometric cell spans; ambiguous 1.234 uses English style.
+  Whole numeric values outside signed int64 stay text; a column converts all-or-nothing.
+- Services remain agent-agnostic; graph/meaning logic remains inside agents/ingestion (D-084).
+- Code/docs use neutral English. Keep LF line endings (D-044). No README edits until Iteration 7.
 
 ## Commands
-```bash
-.venv/bin/python -m pytest -q                                   # offline suite, ~45 s (all tabs' tests)
-.venv/bin/python -m pytest -q tests/unit/test_state.py tests/unit/test_nodes.py tests/unit/test_graph.py tests/unit/test_graph_routing.py tests/unit/test_tracing_config.py   # Iteration 5: 94
-.venv/bin/python -m pytest -q tests/unit/test_tables.py tests/unit/test_sample_pdfs.py tests/unit/test_context.py
-.venv/bin/python -m scripts.make_sample_pdfs                     # regenerate data/sample_pdfs/ (offline)
-.venv/bin/python -m pytest -q tests/unit/test_cleaning.py        # 60 cases, pure cells-to-data
-.venv/bin/python -m pytest -q tests/unit/test_document.py       # one module
-.venv/bin/python -m pytest -q tests/unit/test_pymupdf_assumptions.py   # A-101 / A-102
-# student only (real .env / services):
-pytest -m live
-python -m scripts.setup_index
-python -m scripts.check_services
-streamlit run app.py
-```
+From PowerShell, use the existing WSL virtual environment (no installation):
+- wsl .venv/bin/python -m pytest -q — full offline suite.
+- wsl .venv/bin/python -m pytest -q tests/unit/test_catalog_ui.py tests/unit/test_upload.py
+  tests/unit/test_table_card.py tests/unit/test_ingestion_ui.py tests/functional/test_ingestion_flow.py
+  tests/functional/test_library.py — Iteration 6 smoke tests (one command, join the lines).
+- .venv/bin/python -m scripts.make_sample_pdfs — regenerate committed samples (offline, student owns).
+- Live tests and the real app are run by the student only.
 
 ## Known gaps
-- VC-123's `�` cells are simulated (S01-D-010); the graph-level pause is tested in `test_graph.py`.
-- `enrich`'s tool-call branch (raw answer in `tool_calls`) has no test: `ScriptedChatModel` answers
-  as JSON content only. `format_pages` prints mixed lists as `pages 2, 3, 5` (joined Tables are
-  always consecutive, so not reached yet).
-- Staged verification (D-118): the VCs listed in `iterations/05-graph-pauses-tracing.md` under
-  "Deferred to the final iteration (D-118)" are checked in Iteration 7.
-- `ingested_at` is stamped per Table at assembly, so Tables of one Document differ by milliseconds.
-- PyMuPDF's "external" header (text above a borderless table) is ignored (S01-D-008).
-- A word hyphenated at a line end keeps a space in context text (`full- time`); not dehyphenated.
-- `collect_context` re-reads the page layout (and `find_tables`) on each call.
-- Spec FR-124's wording must follow S01-D-011 (spec tab).
-- Cleaning inputs are rectangular/aligned grids from extraction; these helpers do not validate
-  malformed caller shapes. Ambiguous `1.234` defaults to English (D-055, documented limitation).
-- VC-105 … VC-107 are checked at function level only; "zero LLM/embedding calls, nothing written"
-  (FR-108) is checked at graph level in Iteration 7.
-- `open_document` translates only open failures. A PDF that opens but whose page content is damaged
-  could make `page.get_text()` raise a raw PyMuPDF error; not seen in tests, not handled yet.
-- Fixture tables are ruled (bordered) only; borderless tables are a known limitation of D-046.
-- PyMuPDF 1.28.2 prints "Consider using the pymupdf_layout package…" to stdout on the first
-  `find_tables()` call in a process; harmless (pytest captures it).
-- From spec 00: AppTest cannot attach files to the composer (S00-D-018); `Settings` defaults are not
-  exported to the environment (A-006, tracing must stay on when a variable is omitted — FR-154).
-- `find_versions` relies on `Index.fetch_by_metadata` of pinecone 10; the fakes cannot prove the real
-  service accepts it on the student's index (live check, Iteration 7).
-- LLM rows are not cut per cell: a Table with huge cells can pass the 24,000-character prompt budget
-  (S01-D-016). No code enforces the budget yet.
-- `load_catalog` assumes every record in the namespace was written by Octi (a foreign record with no
-  `columns_info` raises `KeyError`).
-- `embed_documents` is called once with all texts of a Document (no batching).
-- Pinecone's `list` is eventually consistent: records upserted a moment ago may be missing from a
-  catalog reload (the UI updates the session catalog from the run's own result, D-067).
+- See iterations/05-graph-pauses-tracing.md and 06-chat-and-catalog-ui.md for deferred VCs (D-118).
+- Browser clicks in the local component, real attachments and 375/1280 px layout checks are manual
+  student checks in Iteration 7; AppTest cannot attach PDFs or execute component JavaScript.
+- Step-4 cleanup warnings retain possible old entries in the session; successful re-upload cleans up.
+- Context is re-read per Table. PyMuPDF external headers and borderless/scanned/image tables remain
+  known limitations; line-end hyphenation leaves a space. The damaged-text fixture patches extraction.
+- ingested_at is stamped per Table at assembly. load_catalog assumes valid Octi records.
+- A Table with exceptionally large cells can exceed the prompt character budget; no runtime cap exists.
+- Real fetch_by_metadata support, structured output and trace grouping are confirmed by live checks.
+- Concurrent spec 02 changes can temporarily break the shared full suite; never change its files to
+  hide such a failure. Report the cause and wait for its owning agent/student if unresolved.

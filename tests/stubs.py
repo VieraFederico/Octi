@@ -414,3 +414,50 @@ class FakePineconeIndex:
         size = limit or self.page_size
         for start in range(0, len(ids), size):
             yield SimpleNamespace(vectors=[SimpleNamespace(id=i) for i in ids[start : start + size]])
+
+
+def catalog_entry(**overrides):
+    """A small catalog Table for offline UI smoke tests (D-118)."""
+    from datetime import datetime, timezone
+    from agents.ingestion.schemas import CatalogEntry
+    values = dict(table_id="table", name="Regional sales", description="Sales by region in USD.",
+                  columns=[dict(name="Revenue", description="Regional revenue", unit="USD", dtype="int64")],
+                  row_headers=["North", "South"], source_file="report.pdf", pages=[1], document_sha="hash",
+                  ingested_at=datetime(2026, 1, 1, tzinfo=timezone.utc), preview="Revenue\n100\n200",
+                  n_rows=2, n_cols=1, row_headers_total=2)
+    values.update(overrides)
+    return CatalogEntry(**values)
+
+
+class ScriptedIngestionRunner:
+    """One RunResult per start/resume; optional ordered (node, update) steps per call.
+
+    The functions have the production runner signatures; no client or network is created.
+    """
+
+    def __init__(self, results, steps=None):
+        from agents.ingestion.state import RunStore
+        self.results = iter(results)
+        self.steps = iter(steps) if steps is not None else None
+        self.calls = []
+        self.deps = SimpleNamespace(runs=RunStore())
+
+    def _next(self, on_update):
+        result = next(self.results)
+        steps = next(self.steps) if self.steps is not None else [("load_pdf", {"page_count": 2})]
+        for node, update in steps:
+            if on_update:
+                on_update(node, update)
+        if result.status == "paused" and result.thread_id not in self.deps.runs.thread_ids():
+            self.deps.runs.open(result.thread_id, b"fixture pdf")
+        if result.status == "finished":
+            self.deps.runs.close(result.thread_id)
+        return result
+
+    def start(self, graph, deps, source_file, pdf, *, thread_id=None, on_update=None):
+        self.calls.append(("start", source_file))
+        return self._next(on_update)
+
+    def resume(self, graph, deps, thread_id, choice, *, on_update=None):
+        self.calls.append(("resume", choice))
+        return self._next(on_update)

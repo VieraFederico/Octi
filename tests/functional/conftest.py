@@ -5,6 +5,7 @@ cleared before every test; otherwise one test's fake start-up would leak into th
 """
 
 from collections.abc import Callable
+from types import SimpleNamespace
 
 import pytest
 import streamlit as st
@@ -28,9 +29,15 @@ def start_app(monkeypatch: pytest.MonkeyPatch, make_settings) -> Callable[..., A
 
     monkeypatch.setattr("services.llm.make_chat_model", explode)
     monkeypatch.setattr("services.llm.make_embeddings", explode)
+    # Session catalog reads also stay offline; individual UI tests can seed or override them.
+    monkeypatch.setattr("ui.catalog.load_catalog", lambda _settings: [])
+    # Startup checks use a ready local fake; sandbox failure tests override this factory.
+    monkeypatch.setattr("services.sandbox.make_docker_client", lambda: SimpleNamespace(
+        ping=lambda: True, images=SimpleNamespace(get=lambda _name: object()), close=lambda: None,
+    ))
     # Speed: every AppTest scans all installed packages for custom-component manifests (~3 s per test on
-    # /mnt/c, where each file access crosses into Windows). Octi uses no custom components, so the scan
-    # always finds nothing; skip it. If Streamlit renames this function, monkeypatch fails loudly.
+    # /mnt/c, where each file access crosses into Windows). Octi's local component has no package
+    # manifest, so the scan finds nothing; skip it. A renamed scanner fails loudly.
     monkeypatch.setattr("streamlit.components.v2.manifest_scanner.scan_component_manifests", lambda **_: [])
 
     def start(

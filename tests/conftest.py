@@ -70,6 +70,18 @@ def fake_env() -> dict[str, str]:
     }
 
 
+@pytest.fixture(autouse=True)
+def fake_docker_factory(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest) -> None:
+    """Offline startup/health checks use a fake daemon; live tests retain the real factory."""
+    if _is_live(request):
+        return
+    from services import health, sandbox
+    from tests.analyst_stubs import FakeDockerClient
+
+    monkeypatch.setattr(sandbox, "make_docker_client", FakeDockerClient)
+    monkeypatch.setattr(health, "make_docker_client", FakeDockerClient)
+
+
 @pytest.fixture
 def make_settings(fake_env: dict[str, str]) -> Callable[..., Settings]:
     """Build `Settings` from the fake environment, overriding or removing keys per test.

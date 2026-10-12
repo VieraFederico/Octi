@@ -36,10 +36,12 @@ def request_new_chat(state: MutableMapping[str, Any]) -> None:
     if state.get(WARN, True):
         state[CONFIRMING] = True
     else:
-        state[MESSAGES] = []
+        erase(state, False)
 
 
 def erase(state: MutableMapping[str, Any], dont_warn_again: bool) -> None:
+    from ui.ingestion import abandon_run
+    abandon_run(state)
     state[MESSAGES] = []
     state[CONFIRMING] = False
     if dont_warn_again:

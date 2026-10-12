@@ -14,7 +14,8 @@ import html
 import streamlit as st
 
 from services.settings import Settings
-from ui.documents import documents_html, load_documents
+from ui.documents import render_documents
+from ui.ingestion import is_streaming
 from ui.icons import CHECK, WARNING, img_tag
 from ui.new_chat import request_new_chat
 
@@ -29,22 +30,23 @@ def current_view() -> str:
 
 def render_sidebar(settings: Settings) -> None:
     view = current_view()
+    disabled = is_streaming(st.session_state)
     with st.sidebar:
         # Every `key` below becomes a `st-key-<key>` class that `assets/styles.css` targets.
-        st.button("Octi", key="home", on_click=_select, args=(CHAT,), type="tertiary", help="Back to the chat")
+        st.button("Octi", key="home", on_click=_select, args=(CHAT,), type="tertiary", help="Back to the chat", disabled=disabled)
 
         with st.container(key="sidebar-nav"):
             st.button(
                 "New chat", key="nav-new", icon=":material/add:", on_click=_new_chat, shortcut=NEW_CHAT_SHORTCUT,
-                type="tertiary", width="stretch",
+                type="tertiary", width="stretch", disabled=disabled,
             )
             st.button(
                 LIBRARY, key="nav-library", icon=":material/table_chart:", on_click=_select, args=(LIBRARY,),
                 type="secondary" if view == LIBRARY else "tertiary",  # the stylesheet tints "secondary"
-                width="stretch",
+                width="stretch", disabled=disabled,
             )
 
-        st.html(documents_html(load_documents()))
+        render_documents(disabled=disabled)
 
         # The inner container's key picks the status dot's color in `assets/styles.css`.
         with st.container(key="sidebar-footer"), st.container(key="status-ok" if settings.LANGSMITH_TRACING else "status-warn"):

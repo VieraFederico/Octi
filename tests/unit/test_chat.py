@@ -5,14 +5,14 @@ from types import SimpleNamespace
 from ui.chat import reply_to, submission_parts
 
 
-class UntouchableUpload:
-    """An uploaded file whose content must never be read (FR-023: the PDF is not stored)."""
+class MemoryUpload:
+    """A PDF available as bytes without any filesystem operation (FR-101)."""
 
     def __init__(self, name: str) -> None:
         self.name = name
 
     def read(self, *_args: object) -> bytes:
-        raise AssertionError("the PDF content was read")
+        return b"fixture pdf"
 
     getvalue = read
 
@@ -26,25 +26,14 @@ def test_text_gets_the_spec_02_placeholder() -> None:
     assert "spec 01" not in assistant["content"]
 
 
-def test_pdf_gets_the_spec_01_placeholder() -> None:
-    """VC-028: a PDF → user message shows its name; assistant placeholder mentions spec 01."""
-    user, assistant = reply_to("", ["report.pdf"])
-    assert "report.pdf" in user["content"]
-    assert "spec 01" in assistant["content"]
-    assert "spec 02" not in assistant["content"]
-
-
-def test_text_and_pdf_together_get_both_placeholders_in_order() -> None:
-    """VC-028a: text + PDF → one user message with both; reply has spec 01 then spec 02."""
-    user, assistant = reply_to("what is this?", ["report.pdf"])
-    assert "what is this?" in user["content"] and "report.pdf" in user["content"]
-    assert assistant["content"].index("spec 01") < assistant["content"].index("spec 02")
-
-
-def test_submission_parts_use_file_names_only() -> None:
-    """VC-028: only the file name is used; the content is never read, so nothing is stored."""
-    submission = SimpleNamespace(text="what is this?", files=[UntouchableUpload("report.pdf")])
-    assert submission_parts(submission) == ("what is this?", ["report.pdf"])
+def test_submission_parts_keep_pdf_bytes_in_memory() -> None:
+    """VC-101/104 smoke supersedes VC-028/028a: text and a PDF reach ingestion together."""
+    # Given
+    submission = SimpleNamespace(text="what is this?", files=[MemoryUpload("report.pdf")])
+    # When
+    parts = submission_parts(submission)
+    # Then
+    assert parts == ("what is this?", [{"name": "report.pdf", "pdf": b"fixture pdf"}])
 
 
 def test_submission_parts_accept_text_only() -> None:

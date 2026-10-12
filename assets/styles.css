@@ -103,6 +103,12 @@
 }
 .octi-doc-title span { overflow: hidden; text-overflow: ellipsis; }
 .octi-doc-title img { flex: none; }
+button.octi-doc-title {
+  border: none; background: transparent; color: inherit; font: inherit;
+  width: 100%; text-align: left; cursor: pointer;
+}
+button.octi-doc-title:hover { color: var(--octi-accent); }
+button.octi-doc-title:disabled { opacity: 0.5; cursor: default; }
 
 /* A PDF's tables hang from a thin guide line, indented under its name. */
 .octi-doc-tables { margin: 0 0 0.35rem 0.45rem; padding-left: 1.15rem; border-left: 1px solid var(--octi-surface0); }
