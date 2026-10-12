@@ -1,16 +1,17 @@
 # Spec 03 — Evaluation, docs and bonus
 
-- **Version:** 0.2
+- **Version:** 0.3
 - **Last updated:** 2026-10-12
 - **Status:** Reviewed (`/review-spec` round 2: READY) — next `/write-spec-plan`
 - **Owner:** Federico Viera
 - **Parents:** `specs/00-foundation-frozen.md`, `specs/01-ingestion.md` (v0.8: sample PDFs and their
   constants, FR-156), `specs/02-analyst.md` (v0.4: the Analyst graph this spec extends). Parent
   identifiers are cited, never renumbered; this spec uses the 3xx range.
-- **Changelog:** v0.2 — `/review-spec` round 1 fixes (D-112): percent matching and zero tolerance
+- **Changelog:** v0.3 — expected Tables are identified by file and table position, not by name
+  (D-122): FR-301, FR-308, §7. v0.2 — `/review-spec` round 1 fixes (D-112): percent matching and zero tolerance
   (FR-308), examples matched by id (FR-305), `confirm_tables` parameter (FR-307, §7), catalog by
   hash (FR-306), scoring's Selected tables (FR-308), who drafts `EVALUATION.md` (FR-327). v0.1 — first draft from the spec 03 discovery (D-106 … D-111).
-- **Decisions:** root `DECISIONS.md` D-106 … D-112. Spec-local decisions made during planning and
+- **Decisions:** root `DECISIONS.md` D-106 … D-112, D-122. Spec-local decisions made during planning and
   implementation go to `specs/03-evaluation-plan-artifacts/DECISIONS.md` as `S03-D-NNN` (D-004).
 - **Glossary:** `CONTEXT.md` (Analysis run, Question part, Candidate table, Selected table, Answer
   status, Document, Table).
@@ -61,7 +62,9 @@ they can read without running anything) and the student (an honest measure of wh
 - **FR-301 (Must)** — `eval/questions.yaml` holds 10 questions; each has `id` (`q01` … `q10`),
   `question`, `category`, `expected_status` (`answered` / `partial` / `cannot_answer`),
   `expected_values` (a list of `{name, value, unit}`; `unit` is optional, `percent` when the value is
-  a percentage; empty for `cannot_answer`), `expected_tables` (Table names), and `expected_answer`
+  a percentage; empty for `cannot_answer`), `expected_tables` (a list of `{file, table, name}`: the PDF's
+  file name, the `p<page>-t<position>` suffix of the `table_id`, and a human label; D-122), and
+  `expected_answer`
   (one or two sentences a human can read) (D-107, D-108).
 - **FR-302 (Must)** — The 10 questions cover, one each: (1) single table; (2) single table with an
   allowed scale conversion; (3) a Spanish question on the Spanish PDF; (4) multi-table within ACME
@@ -93,8 +96,9 @@ they can read without running anything) and the student (an honest measure of wh
      value matches `v` or `v / 100`; not applicable (skipped, shown as "–") when `expected_status` is
      `cannot_answer` (D-112);
   3. `tables_correct`: the Selected tables are the tables of the run's answerable Question parts;
-     every expected Table name is among them, and an empty `expected_tables` is correct only when no
-     table was selected (D-112).
+     every expected Table (matched by file name and `p<page>-t<position>`, never by its LLM-written
+     name) is among them, and an empty `expected_tables` is correct only when no table was selected
+     (D-112, D-122).
 - **FR-309 (Must)** — A question whose run raises an error is recorded as an error row (all checks
   ✗, the error kind noted) and the other questions still run (D-108).
 - **FR-310 (Must)** — It writes `eval/results.md`: a header with the run date (UTC), `LLM_MODEL`, the
@@ -204,7 +208,8 @@ they can read without running anything) and the student (an honest measure of wh
   expected_status: answered
   expected_values:
     - {name: revenue_2022, value: 1322.0}           # optional: unit: percent
-  expected_tables: ["Key financial figures"]
+  expected_tables:
+    - {file: acme-annual-report-2023.pdf, table: p1-t1, name: "Income summary"}
   expected_answer: "ACME's revenue in 2022 was USD 1,322.0 million (Key financial figures, page 1)."
 ```
 `category` ∈ `single_table`, `scale_conversion`, `spanish`, `multi_table`, `multi_table_cross_pdf`,

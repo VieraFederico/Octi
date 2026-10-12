@@ -62,6 +62,16 @@ class ExpectedValue(BaseModel):
     unit: Literal["percent"] | None = None
 
 
+class ExpectedTable(BaseModel):
+    """A Table the run must select, identified by deterministic facts (D-048, D-122): its PDF's file
+    name and the `p<page>-t<position>` suffix of its `table_id`. `name` is for humans only: Table names
+    are written by the LLM at ingestion and vary between runs, so they are never compared."""
+
+    file: str = Field(min_length=1)
+    table: str = Field(pattern=r"^p\d+-t\d+$")
+    name: str = ""
+
+
 class Question(BaseModel):
     """One entry of `eval/questions.yaml`."""
 
@@ -70,7 +80,7 @@ class Question(BaseModel):
     category: Category
     expected_status: AnswerStatus
     expected_values: list[ExpectedValue]
-    expected_tables: list[str]
+    expected_tables: list[ExpectedTable]
     expected_answer: str = Field(min_length=1)
 
     @model_validator(mode="after")
@@ -128,22 +138,23 @@ def values_correct(question: Question, state: Mapping[str, Any]) -> bool | None:
     return all(any(_matches(expected, n) for n in numbers) for expected in question.expected_values)
 
 
-def selected_table_names(state: Mapping[str, Any]) -> set[str]:
-    """The Table names of the answerable Question parts' tables (the Selected tables for scoring)."""
+def selected_tables(state: Mapping[str, Any]) -> set[tuple[str, str]]:
+    """The answerable Question parts' tables (the Selected tables for scoring) as (file name,
+    `p<page>-t<position>`) pairs: facts fixed by the PDF, unlike the LLM-written names (D-122)."""
     selection = state.get("selection")
     if selection is None:
         return set()
-    names = {entry.table_id: entry.name for entry in state.get("candidates") or []}
+    files = {entry.table_id: entry.source_file for entry in state.get("candidates") or []}
     ids = {table_id for part in selection.parts if part.verdict == "answerable" for table_id in part.table_ids}
-    return {names.get(table_id, table_id) for table_id in ids}
+    return {(files.get(table_id, ""), table_id.split("-", 1)[-1]) for table_id in ids}
 
 
 def tables_correct(question: Question, state: Mapping[str, Any]) -> bool:
     """Every expected Table is selected; an empty expectation is correct only when none is selected."""
-    selected = selected_table_names(state)
+    selected = selected_tables(state)
     if not question.expected_tables:
         return not selected
-    return set(question.expected_tables) <= selected
+    return {(table.file, table.table) for table in question.expected_tables} <= selected
 
 
 # --- Result rows and the results file ------------------------------------------------------------
