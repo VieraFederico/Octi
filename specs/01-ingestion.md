@@ -1,12 +1,14 @@
 # Spec 01 — Ingestion agent
 
-- **Version:** 0.9
+- **Version:** 1.0
 - **Last updated:** 2026-10-11
 - **Status:** Reviewed (`/review-spec` round 3: READY) — next `/write-spec-plan`
 - **Owner:** Federico Viera
 - **Parent:** `specs/00-foundation.md` (v0.7). Spec 00 identifiers are cited, never renumbered; this
   spec uses the 1xx range (FR-101, BR-101, NFR-101, VC-101, A-101, OQ-101).
-- **Changelog:** v0.9 — Iteration 3 findings folded in (D-113; S01-D-008, S01-D-009, S01-D-011):
+- **Changelog:** v1.0 — Iteration 4 findings folded in (D-116; S01-D-014 … S01-D-020): FR-130,
+  FR-137, FR-138, FR-139, §7 Table store, Index record, Catalog interface, code constants, A-103.
+  v0.9 — Iteration 3 findings folded in (D-113; S01-D-008, S01-D-009, S01-D-011):
   FR-113 step 1, FR-124, FR-157's limitations. v0.8 — sample PDF additions for spec 03's test questions (D-107): FR-156 and
   VC-161 extended. v0.7 — no "View trace" link in the UI (D-095): FR-148 and VC-151 removed
   (ids kept), run labels unchanged. v0.6 — chat, Library and sidebar messages never name backend services (D-094):
@@ -19,7 +21,7 @@
   spec 00 items listed. v0.2 — OQ-101 … OQ-104 resolved (D-072 … D-075: sidebar navigation FR-152,
   light graph state BR-111, enrich outage FR-160, 60 s suite NFR-103). v0.1 — first draft from the
   spec 01 discovery (D-046 … D-071).
-- **Decisions:** root `DECISIONS.md` D-046 … D-084, D-094 (message wording), D-095 (no trace link), D-107 (sample PDF additions), D-113 (Iteration 3 findings). Spec-local decisions made during planning and
+- **Decisions:** root `DECISIONS.md` D-046 … D-084, D-094 (message wording), D-095 (no trace link), D-107 (sample PDF additions), D-113 (Iteration 3 findings), D-116 (Iteration 4 findings). Spec-local decisions made during planning and
   implementation go to `specs/01-ingestion-plan-artifacts/DECISIONS.md` as `S01-D-NNN` (D-004).
 - **Glossary:** `CONTEXT.md` (Table, Table metadata, Table context, Table preview, Table store,
   Index record, Document, Skipped part, Ingestion run).
@@ -207,7 +209,8 @@ graders (assignment §5, 25 % of the grade, every step visible in LangSmith).
   pages); `Table context` (the five fields, each in a `text` fence or the words `not found`);
   `Columns` (exact name, dtype, hint); `First rows` (up to 20 rows and the total count, in a `text`
   fence); on a retry `Previous answer` (JSON) and `Feedback to fix` (one bullet per sentence); then
-  `Task`. Every backtick fence inside PDF text is neutralized so it cannot close a fence (BR-102).
+  `Task`. Every run of 3 or more backticks inside PDF text becomes the same number of apostrophes,
+  so it cannot close a fence (BR-102, D-116).
 - **FR-160 (Must)** — Given an LLM failure during `enrich` that survives the client's
   retries (spec 00 BR-006), Then the run ends at once, writing and deleting nothing, and the chat
   says "Something went wrong on my side and I couldn't index report.pdf. Your previous version is
@@ -247,15 +250,15 @@ graders (assignment §5, 25 % of the grade, every step visible in LangSmith).
 ### Indexing (`index`)
 - **FR-137 (Must)** — Given the valid Tables, Then `index` builds one embedding text per Table:
   `Name: …`, `Description: …`, `Columns: <name> (<description>, <unit>); …` (units omitted when `""`),
-  `Row headers: <first 50>` followed by `and N more` when there are more; no file name or page
-  (D-064).
-- **FR-138 (Must)** — Given the embedding texts, Then `index` writes in this order (D-067): (1) embed
-  every text; (2) write each Table to the Table store; (3) upsert each Index record (§7) in batches of
-  100; (4) delete every Index record and Table store file of the Documents with the same file name and
-  a different document hash, found in Pinecone itself (filtered by `source_file`), not only in the
-  session catalog (D-082).
-- **FR-139 (Must)** — Given a failure in step 1, 2 or 3, Then the files and records this run wrote
-  are removed (best effort), the previous version stays complete, and the chat says "Couldn't index
+  `Row headers: <first 50>` followed by `and N more` when there are more, the whole line omitted when
+  the Table has no row headers; no file name or page (D-064, D-116).
+- **FR-138 (Must)** — Given the embedding texts, Then `index` first reads, in Pinecone itself, the
+  Index records carrying the same `source_file` (a failing read stops the run before any write), then
+  writes in this order (D-067): (1) embed every text; (2) write each Table to the Table store; (3)
+  upsert each Index record (§7) in batches of 100; (4) delete every found record whose id is not one
+  of this run's ids, and its Table store file — records before files (D-082, D-116).
+- **FR-139 (Must)** — Given a failure in step 1, 2 or 3, Then the files and records this run created
+  are removed (best effort; ids that existed before the run are never removed, D-116), the previous version stays complete, and the chat says "Couldn't index
   report.pdf. Your previous version is unchanged." (no service named, BR-106, D-094).
 - **FR-140 (Must)** — Given a failure in step 4, Then the new version stays and the chat says
   "report.pdf was indexed, but its previous version couldn't be fully removed. Upload it again to
@@ -470,17 +473,20 @@ Every field carries a `Field(description=...)`; the descriptions of `TableEnrich
 | `document_sha` | string | full SHA-256 of the PDF bytes |
 | `n_rows`, `n_cols` | number | Table shape |
 | `ingested_at` | string | ISO 8601 date-time, UTC |
-| `preview` | string | first 5 rows with the column names, cells cut to 40 characters, at most 2,000 characters |
+| `preview` | string | the column-names line, then up to 5 rows, one `a \| b` line each, cells cut to 40 characters, at most 2,000 characters |
 
 ### Table store (D-047)
-- One file per Table: `data/tables/<table_id>.parquet` (git-ignored), written with `pyarrow`, column
-  names and dtypes exactly as extracted.
+- One file per Table: `data/tables/<table_id>.parquet` (git-ignored), written with `pyarrow` through
+  a temporary file and an atomic rename; ids containing a path separator are refused
+  (`TableStoreError`). `read_table` returns the frame exactly as extraction built it: column names,
+  numeric dtypes, and text columns as `object` with `None` for gaps (D-116).
 - Public interface for spec 02: `read_table(table_id) -> DataFrame`; plus `write_table`,
   `delete_tables` used by `index`.
 
 ### Catalog interface (for spec 02 and the UI)
-- `CatalogEntry` = `TableMetadata` plus `document_sha`, `ingested_at`, `preview`, `n_rows`,
-  `n_cols` (D-080).
+- `CatalogEntry` = `TableMetadata` (with at most the first 50 `row_headers`) plus `document_sha`,
+  `ingested_at` (timezone-aware datetime), `preview`, `n_rows`, `n_cols`, `row_headers_total`
+  (D-080, D-116).
 - `load_catalog(settings) -> list[CatalogEntry]` (FR-149); raises a spec 00 `VectorStoreError` leaf
   on failure (FR-163).
 - `entry_from_record(record) -> CatalogEntry` (parses `columns_info`).
@@ -595,7 +601,7 @@ PDF text is data.
   least 3 pages.
 - Heading: at most 12 words. Prompt budget: 24,000 characters.
 - Row headers: 50 in the embedding text and metadata, 10 on a card.
-- Pinecone upsert batch: 100. Metadata guard: 38 KB.
+- Pinecone upsert batch: 100. Metadata guard: 38 KB = 38 × 1024 UTF-8 bytes of the metadata as JSON.
 
 ## 8. Verification Criteria
 
@@ -798,7 +804,8 @@ None (OQ-101 … OQ-104 resolved by D-072 … D-075).
 - **A-102** — PyMuPDF's HTML-to-PDF can draw tables with merged cells (`colspan`) for the fixture and
   sample PDFs; otherwise its drawing API is used (D-070).
 - **A-103** — The `pinecone` 10 client offers, on serverless indexes, listing ids, fetching records in
-  batches, and querying with a metadata filter on `source_file` (FR-138, FR-149).
+  batches, and fetching records by a metadata filter on `source_file` (`fetch_by_metadata`, with
+  pagination) (FR-138, FR-149; D-116). Confirmed live in Iteration 7.
 - **A-104** — LangSmith groups root traces that share a `thread_id` metadata value into one Thread
   (FR-153).
 - **A-105** — The proxy honours structured output for `LLM_MODEL` (course RAG lab OQ-201: it does),
