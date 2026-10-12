@@ -140,3 +140,57 @@ Project-wide decisions are in the root `DECISIONS.md` (D-085 … D-116 for this 
 - **Rejected:** retaining the first 64 KB (can discard the final `emit` line and error details).
 - **Consequences:** the last result line and stderr feedback survive preceding verbose output;
   output exceeding the cap within its final JSON line remains invalid for the Analyst to classify.
+
+## S02-D-015: Explicit node-to-node state and dependencies (Iteration 3)
+- **Context:** the original state omitted the draft, selection feedback and sandbox result; the
+  student revised the contract and the spec tab folded it into v0.8/D-120.
+- **Decision:** all three are state fields, not scratch data; `sandbox_result` is a plain dict and
+  `code_draft` is a `CodeDraft`. The catalog is read only by `library_check` through `AnalystDeps`.
+  Nodes return partial updates; dependencies include lazy factories, catalog loader, table paths,
+  runner and optional sandbox base directory. No DataFrame/client/settings enters state.
+- **Rejected:** per-run scratch data (lost at spec 03's future pause); eager service calls in deps.
+- **Consequences:** model/client construction failures happen inside guarded nodes. Spec 03 can
+  checkpoint node inputs; this iteration introduces no pause or checkpointer.
+
+## S02-D-016: Streaming entry point and UI contract (Iteration 3)
+- **Context:** the plan names `run_analysis` without settling its return/callback shape.
+- **Decision:** student-approved `run_analysis(question, window, deps, *, on_update=None,
+  thread_id=None) -> AnalystState`; `on_update(node_name, partial_update)` follows ingestion's
+  shape. A fresh graph/state is built per call; counters/history are replaced with each update.
+- **Rejected:** an ingestion-style paused `RunResult` (analysis has no pause in this spec).
+- **Consequences:** Iteration 4 stores the returned state and supplies only Analysis turns.
+  Run name/id are on an explicit root trace; the compiled graph is its `Analyst graph` child.
+
+## S02-D-017: Public masking hooks and completion metadata (Iteration 3)
+- **Context:** sandbox outputs now appear in later nodes' inputs as well as execute outputs (D-121).
+- **Decision:** student-selected documented Client `hide_inputs`/`hide_outputs` hooks recursively
+  replace stdout/stderr with byte sizes, preserving exit code/timeout. History feedback and code
+  retry prompt feedback are masked in the trace copy too; actual model inputs remain unchanged.
+  `RunTree.add_metadata` on the explicit root records completion labels (A-204); execute adds its
+  metrics to its current span. An injected tracing client must be configured with the same hooks.
+- **Rejected:** a tracer subclass depending on internal callbacks; masking only the execute span.
+- **Consequences:** `services/tracing.make_langsmith_client` accepts optional hooks, preserving
+  existing callers. Offline tests exercise the installed SDK through a recording session.
+- **Reference:** [LangSmith public masking API](https://docs.langchain.com/langsmith/mask-inputs-outputs).
+
+## S02-D-018: Spec 01 mappings and retrieval boundary (Iteration 3)
+- **Context:** the plan's reuse names lack Analyst query and structured-output operations.
+- **Decision:** `CatalogEntry`, `load_catalog`, `entry_from_record`, and Parquet paths use the real
+  spec 01 interfaces. `AnalystChatModel`, `AnalystEmbeddings`, `AnalystQueryIndex` extend its
+  `ScriptedChatModel`, `FakeEmbeddings`, `FakePineconeIndex` in `tests/analyst_stubs.py` only.
+  Student-approved `query_records` in `services/vector_store.py` returns id/score/metadata with
+  existing SDK error translation; ranking and Table reconstruction stay in the Analyst.
+- **Rejected:** editing spec 01's fakes; importing a private service translator in agent code.
+- **Consequences:** no spec 01 owned files changed; query errors become existing leaf errors.
+
+## S02-D-019: Malformed outputs and attempt history (Iteration 3)
+- **Context:** student changes were folded into spec v0.9/D-121.
+- **Decision:** invalid plans fail (`llm`); selection shape errors get one retry; malformed final
+  answers use the template. Malformed/blank-code drafts skip execute, then `check` records an
+  `invalid_output` attempt with D-121's exact feedback, within the normal retry budget. Blank
+  approach also fails the required non-empty code/approach contract. Histories keep code, approach,
+  outputs, exit/timeout, failure and feedback; no code/exit is available for a malformed draft,
+  represented by empty code/outputs and exit 1. Only the last history item feeds a code retry.
+- **Rejected:** ending an invalid draft as an infrastructure failure; inventing replacement code.
+- **Consequences:** every attempted draft consumes one attempt, even when no container ran.
+  No new failure-kind literal is needed; answer status remains computed by plain code.

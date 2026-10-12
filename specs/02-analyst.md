@@ -1,13 +1,15 @@
 # Spec 02 — Analyst agent
 
-- **Version:** 0.7
+- **Version:** 0.9
 - **Last updated:** 2026-10-11
 - **Status:** Reviewed (`/review-spec` round 2: READY) — next `/write-spec-plan`
 - **Owner:** Federico Viera
 - **Parents:** `specs/00-foundation-frozen.md` (spec 00 capsule) and `specs/01-ingestion.md` (v0.7;
   its §7 interfaces are the contract this spec consumes). Parent identifiers are cited, never
   renumbered; this spec uses the 2xx range (FR-201, BR-201, NFR-201, VC-201, A-201, OQ-201).
-- **Changelog:** v0.7 — `cannot_answer` answers carry no method part (D-119): FR-228, VC-225.
+- **Changelog:** v0.9 — malformed model output and output masking in traces (D-121): FR-206,
+  FR-221, FR-240, VC-219. v0.8 — Analyst state gains `code_draft`, `selection_feedback`, `sandbox_result`
+  (D-120). v0.7 — `cannot_answer` answers carry no method part (D-119): FR-228, VC-225.
   v0.6 — FR-212: an `answerable` part must name at least one table (D-117); VC-211
   extended. v0.5 — spec 01 v1.0's `CatalogEntry` (with `row_headers_total`) noted in §7
   (D-116). v0.4 — in the UI, Question parts are labelled "Question 1", "Question 2" (D-110):
@@ -15,7 +17,7 @@
   (FR-202), catalog reload (FR-246), readable sandbox folder (FR-217), `select` size caps (FR-209,
   NFR-205), wording of FR-201, FR-203, FR-212, FR-236, A-206. v0.2 — OQ-201 resolved (D-103): answers in the question's language, search phrases
   in English (FR-204, FR-227); `docker==7.1.0` pinned (A-201). v0.1 — first draft from the spec 02 discovery (D-085 … D-101).
-- **Decisions:** root `DECISIONS.md` D-085 … D-101, D-103, D-104, D-110, D-117, D-119 (plus D-094 / D-095, which also amended spec 01).
+- **Decisions:** root `DECISIONS.md` D-085 … D-101, D-103, D-104, D-110, D-117, D-119, D-120, D-121 (plus D-094 / D-095, which also amended spec 01).
   Spec-local decisions made during planning and implementation go to
   `specs/02-analyst-plan-artifacts/DECISIONS.md` as `S02-D-NNN` (D-004).
 - **Glossary:** `CONTEXT.md` (Analysis run, Question part, Candidate table, Selected table, Answer
@@ -101,7 +103,8 @@ requirements on isolated execution and on answerability).
   earlier turns only to fill in what it leaves out." A question that is already standalone is kept
   as written (D-097).
 - **FR-206 (Must)** — Every later step uses only the `standalone_question` and the plan; the status
-  box shows "Understood as: <standalone question>" (D-097).
+  box shows "Understood as: <standalone question>" (D-097). An unparseable `QueryPlan`, or one with no
+  Question parts or no search phrases, ends the run through `fail` with kind `llm` (D-121).
 
 ### Retrieving (`retrieve`)
 - **FR-207 (Must)** — `retrieve` embeds each search phrase with spec 00's `make_embeddings`, queries
@@ -168,7 +171,9 @@ requirements on isolated execution and on answerability).
   3. no valid last JSON line from `emit` → "The code must end by calling `emit(parts)` exactly
      once." plus the schema error;
   4. emitted parts different from the `answerable` Question parts → which parts are missing or
-     extra.
+     extra;
+  5. an unparseable `CodeDraft`, or one with empty code → "Your answer must be a CodeDraft with
+     non-empty code and approach." (D-121).
   A part emitted as `missing` is not a failure.
 - **FR-222 (Must)** — Given a failure after attempt *k*, When *k* ≤ `ANALYST_MAX_RETRIES`, Then
   `generate_code` runs again (FR-216); When *k* = `ANALYST_MAX_RETRIES` + 1, Then every `answerable`
@@ -247,7 +252,9 @@ requirements on isolated execution and on answerability).
   `selected_tables`, `error_kind` added when it ends; every node is a span; it is traced whenever
   `Settings` has tracing on (as spec 01 FR-154) (D-099).
 - **FR-240 (Must)** — The `execute` span records the exit code, whether it timed out and the sizes of
-  stdout and stderr, not their content (D-099).
+  stdout and stderr, not their content (D-099). Sandbox stdout and stderr text are kept out of every
+  span (later nodes receive `sandbox_result` in their state) through the tracing client's input and
+  output masking, replaced by size, exit code and timeout flag (D-121).
 
 ### Settings, image, docs and tests
 - **FR-241 (Must)** — `Settings` parses `ANALYST_MAX_RETRIES` (integer 0–5, default 2) and
@@ -378,10 +385,13 @@ class FinalAnswer(BaseModel):        # respond's structured output
 
 ### Analyst state (fields)
 `question`, `window` (≤ 4 turns), `plan` (`QueryPlan`), `candidates` (≤ 10 `CatalogEntry`),
-`selection` (`TableSelection`), `selection_attempts`, `code_attempts`, `last_failure`,
-`attempts_history` (every attempt: code, stdout, stderr, exit code, failure kind), `part_outcomes`,
+`selection` (`TableSelection`), `selection_attempts`, `selection_feedback` (sentences for the
+retry), `code_attempts`, `code_draft` (the current `CodeDraft`), `sandbox_result` (exit code,
+timed-out flag, stdout and stderr capped at 64 KB), `last_failure`, `attempts_history` (every
+attempt: code, stdout, stderr, exit code, failure kind), `part_outcomes`,
 `answer_status`, `answer` (`FinalAnswer` text), `error` (`kind`: `llm` / `vector_store` / `sandbox`,
-safe message) or none. No DataFrame (BR-208).
+safe message) or none. No DataFrame (BR-208). The catalog is read by the empty-library node and is
+not kept in the state (D-120).
 
 ### Analyst graph (D-100)
 
@@ -532,8 +542,8 @@ Code generation, execution, retries (stub sandbox runner unless marked live)
 - VC-217 (FR-219, FR-221): a runner reporting a timeout → feedback names N seconds; the container is
   killed (fake client records it).
 - VC-218 (FR-220): 1 MB of stdout → 64 KB kept.
-- VC-219 (FR-221): each failure kind (exit ≠ 0, timeout, no `emit` line, wrong parts) → the FR-221
-  feedback; a part emitted `missing` → no retry.
+- VC-219 (FR-221): each failure kind (exit ≠ 0, timeout, no `emit` line, wrong parts, unparseable or
+  empty `CodeDraft`) → the FR-221 feedback; a part emitted `missing` → no retry.
 - VC-220 (FR-222, BR-210): `ANALYST_MAX_RETRIES=2`, three failures → three attempts, the answerable
   parts become failed, the run ends with a status; `=0` → one attempt.
 - VC-221 (FR-223): two attempts → `attempts_history` holds both with code, outputs and failure kind.

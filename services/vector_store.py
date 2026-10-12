@@ -165,6 +165,17 @@ def open_index(settings: Settings, client: IndexClient | None = None) -> Any:
         return client.Index(host=description.host)
 
 
+def query_records(index: Any, namespace: str, vector: list[float], top_k: int) -> list[dict[str, Any]]:
+    """Read nearest records with metadata; translate SDK failures at the service boundary.
+
+    Scores and record metadata are returned unchanged. Ranking and Table reconstruction belong
+    to the consuming agent (D-084); this function knows nothing about the Analyst's cap.
+    """
+    with _translate_pinecone_errors():
+        response = index.query(vector=vector, namespace=namespace, top_k=top_k, include_metadata=True)
+    return [{"id": match.id, "score": match.score, "metadata": match.metadata} for match in response.matches]
+
+
 def list_records(index: Any, namespace: str) -> list[dict[str, Any]]:
     """The metadata of every record in the namespace.
 

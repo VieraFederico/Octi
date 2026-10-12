@@ -5,14 +5,23 @@ They live here, not in `tests/stubs.py`, while spec 01 is still being implemente
 """
 
 from collections.abc import Sequence
+import copy
+import json
+import shutil
+from pathlib import Path
+from types import SimpleNamespace
 from datetime import UTC, datetime
 from typing import Any
 
-from requests import Response
+from requests import Response, Session
 from requests.exceptions import ConnectionError, HTTPError, ReadTimeout
 
 from agents.analyst.schemas import QueryPlan, QuestionPart
 from agents.ingestion.schemas import CatalogEntry, ColumnMetadata
+from langchain_core.messages import AIMessage
+from pydantic import BaseModel, ValidationError
+from services.sandbox import RUN_FOLDER_PREFIX, SandboxResult
+from tests.stubs import FakeEmbeddings, FakePineconeIndex, ScriptedChatModel
 
 ColumnSpec = tuple[str, str, str, str]  # (name, unit, dtype, description)
 
@@ -147,3 +156,109 @@ class FakeDockerClient:
 
     def close(self) -> None:
         self.closed = True
+
+
+class AnalystChatModel(ScriptedChatModel):
+    """Reuse the ingestion model's recording/factory seam, parsing the requested Analyst schema."""
+
+    def invoke(self, messages, config=None, **_kwargs):
+        self.calls.append(list(messages))
+        if len(self.calls) > len(self.answers):
+            raise AssertionError("No scripted Analyst answer remains")
+        answer = self.answers[len(self.calls) - 1]
+        if isinstance(answer, Exception):
+            raise answer
+        data = answer.model_dump(mode="json") if isinstance(answer, BaseModel) else answer
+        raw = AIMessage(json.dumps(data))
+        try:
+            parsed = self.structured[-1][0].model_validate(data)
+        except ValidationError as exc:
+            return {"raw": raw, "parsed": None, "parsing_error": exc}
+        return {"raw": raw, "parsed": parsed, "parsing_error": None}
+
+
+class AnalystEmbeddings(FakeEmbeddings):
+    def embed_query(self, phrase):
+        return self.embed_documents([phrase])[0]
+
+
+class AnalystQueryIndex(FakePineconeIndex):
+    """Extend the existing in-memory record store with scripted ranked query results."""
+
+    def __init__(self):
+        super().__init__()
+        self.query_batches = []
+        self.query_calls = []
+
+    def query(self, *, vector, namespace, top_k, include_metadata):
+        self._enter("query")
+        self.query_calls.append({"vector": vector, "namespace": namespace, "top_k": top_k, "include_metadata": include_metadata})
+        ranked = self.query_batches.pop(0) if self.query_batches else [(table_id, 0.9) for table_id in self.ids(namespace)]
+        matches = [SimpleNamespace(id=table_id, score=score, metadata=dict(self.records[namespace][table_id]["metadata"]))
+                   for table_id, score in ranked[:top_k]]
+        return SimpleNamespace(matches=matches)
+
+
+class StubSandboxRunner:
+    """Record prepared inputs and return scripted results; never execute a generated script."""
+
+    def __init__(self, results):
+        self.results = list(results)
+        self.calls = []
+
+    def __call__(self, folder, timeout_s):
+        folder = Path(folder)
+        resolved = folder.resolve()
+        if folder.is_symlink() or resolved.parent != folder.parent.resolve() or not resolved.name.startswith(RUN_FOLDER_PREFIX):
+            raise AssertionError("The runner requires an owned temporary folder")
+        try:
+            self.calls.append({"folder": str(folder), "timeout_s": timeout_s,
+                               "files": sorted(path.name for path in folder.iterdir()),
+                               "script": (folder / "main.py").read_text(encoding="utf-8")})
+            if not self.results:
+                raise AssertionError("No scripted sandbox result remains")
+            result = self.results.pop(0)
+            if isinstance(result, Exception):
+                raise result
+            return result
+        finally:
+            shutil.rmtree(resolved)
+
+
+def analyst_deps(settings, folder, answers, results, *, entries=None):
+    """Complete offline deps, reusing spec 01's fakes without changing its stub module."""
+    from agents.analyst.state import AnalystDeps
+
+    entries = [catalog_entry()] if entries is None else entries
+    index = AnalystQueryIndex()
+    for entry in entries:
+        flat = entry.model_dump(mode="json")
+        flat["columns_info"] = json.dumps(flat.pop("columns"))
+        index.put(settings.PINECONE_NAMESPACE, entry.table_id, flat)
+        (folder / f"{entry.table_id}.parquet").write_bytes(b"offline table copy fixture")
+    model = AnalystChatModel(answers)
+    runner = StubSandboxRunner(results)
+    deps = AnalystDeps(settings=settings, catalog=entries, embeddings=AnalystEmbeddings(), index=index,
+        make_chat_model=model.build, load_catalog=lambda *_: entries,
+        table_file=lambda table_id: folder / f"{table_id}.parquet", sandbox_runner=runner, sandbox_base_dir=folder)
+    return deps, model, runner
+
+
+class TraceRecordingSession(Session):
+    """An SDK transport that records JSON after real masking hooks, with zero network access."""
+
+    def __init__(self):
+        super().__init__()
+        self.payloads = []
+
+    def request(self, method, url, **kwargs):
+        data = kwargs.get("data")
+        if data:
+            self.payloads.append(copy.deepcopy(json.loads(data)))
+        elif kwargs.get("json") is not None:
+            self.payloads.append(copy.deepcopy(kwargs["json"]))
+        response = Response()
+        response.status_code = 200
+        response._content = b"{}"
+        response.url = url
+        return response

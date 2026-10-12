@@ -1,9 +1,10 @@
-# CONTEXT — Spec 02 Analyst agent (after Iteration 2)
+# CONTEXT — Spec 02 Analyst agent (after Iteration 3)
 
-Starting point: spec 00 complete; spec 02 Iteration 1 committed (`5a61b7e`). Spec 01's committed
-records currently reach Iteration 5, and its next UI iteration is being implemented concurrently;
-read its current artifacts before consuming its interfaces. Iteration 2 was implemented alone.
-Spec 02 v0.7 and staged verification (D-118) apply. Iteration 4 requires spec 01 Iteration 7 committed.
+Starting point: spec 00 complete; spec 02 Iteration 2 committed (`c17cb59`). Spec 01's committed
+records currently reach Iteration 6, and its final iteration is being implemented concurrently.
+Read its current artifacts before consuming its interfaces. Iteration 3 was implemented alone.
+Spec 02 v0.9, D-120/D-121 and staged verification (D-118) apply.
+Iteration 4 requires spec 01 Iteration 7 committed.
 
 ## Current state
 - `Settings.ANALYST_MAX_RETRIES` (int 0–5, default 2) and `Settings.SANDBOX_TIMEOUT_SECONDS` (int
@@ -24,7 +25,14 @@ Spec 02 v0.7 and staged verification (D-118) apply. Iteration 4 requires spec 01
 - `sandbox/Dockerfile`: `python:3.13-slim`, pandas 3.0.6, pyarrow 25.0.1, non-root user 10001.
 - Startup requires a healthy sandbox as well as valid settings and index; developer setup errors
   name Docker and the image build command. Diagnostics include a `docker` line.
-- Not yet: the graph (3), the Analysis UI (4), exhaustive VC tests, live checks and README (5).
+- `agents/analyst/state.py`, `nodes.py`, `graph.py`: full Analyst StateGraph, injected lazy services,
+  streaming callback/final state, catalog reload, retrieval, selection retry, code attempts and
+  malformed-draft retries, per-part status merge, checked response/template and generic fail exit.
+- Tracing uses public Client masking hooks across all span payloads and an explicit root with
+  completion metadata; execute adds exit/timeout/output-size metrics (D-121, S02-D-017).
+- 29 smoke cases cover graph routes, node behavior, state independence and real SDK masking with
+  an offline recording transport. Detailed VCs remain staged verification (D-118).
+- Not yet: the Analysis UI (4), exhaustive VC tests, live checks and README (5).
 
 ## File map
 - `agents/analyst/__init__.py` — package marker.
@@ -47,6 +55,13 @@ Spec 02 v0.7 and staged verification (D-118) apply. Iteration 4 requires spec 01
   `tests/functional/test_sandbox_startup.py` — six smoke cases across execution and integration.
 - `tests/unit/test_check_services.py`, `tests/unit/test_error_screen.py` — existing expectations
   updated for the added service; `.gitignore` excludes `data/sandbox_runs/`.
+- `agents/analyst/state.py` — state/attempt/error shapes, dependencies and production `make_deps`.
+- `agents/analyst/nodes.py` — one function per node, selected-table and answer-facts helpers.
+- `agents/analyst/graph.py` — routing, streaming, run labels and public masking/tracing APIs.
+- `services/vector_store.py` — approved agent-agnostic `query_records` helper.
+- `services/tracing.py` — optional public input/output masking hooks in its client factory.
+- `tests/unit/test_analyst_graph.py`, `test_analyst_nodes.py`, `test_analyst_state.py`,
+  `test_analyst_tracing.py` — staged verification (D-118).
 
 ## Pure-piece contract (Iteration 1; historical package ownership)
 
@@ -166,6 +181,22 @@ on invented tables and ids that are not from the sample PDFs.
   `values: {}`. Prints `json.dumps({"parts": cleaned}, allow_nan=False)` (ASCII) with `flush=True`.
 
 ## Public interfaces
+- `AnalystState` — spec v0.9 fields, including `code_draft`, `selection_feedback`, plain-dict
+  `sandbox_result`; `Attempt` also carries approach/timeout/feedback → `agents/analyst/state.py`.
+- `AnalystDeps(settings, catalog=None, embeddings=None, index=None, make_chat_model=...,
+  make_embeddings=..., open_index=..., load_catalog=..., table_file=..., sandbox_runner=...,
+  sandbox_base_dir=None, tracing_client=None)`; `make_deps(settings, *, catalog=None)` → state.py.
+- `build_graph(deps)`, `run_analysis(question, window, deps, *, on_update=None, thread_id=None)`
+  → `agents/analyst/graph.py`; callback is `(node_name, partial_update)`, return is final state.
+- `mask_sandbox_output`, `run_config`, `end_metadata`, `execution_metrics`, `tracing_scope`
+  → graph.py. Root trace is `Analysis: <first 60 chars>`; compiled graph child is `Analyst graph`.
+- Node order: library_check → no_tables/understand → retrieve → select → generate_code → execute
+  → check → merge_status → respond/template; service failures → fail. Retry edges are bounded.
+- `selected_tables(state, *, answerable_only=True)`, `answer_facts(state)` → nodes.py.
+- `query_records(index, namespace, vector, top_k)` → `services/vector_store.py`: id/score/metadata.
+- `make_langsmith_client(settings, *, hide_inputs=None, hide_outputs=None)` → services/tracing.py.
+- `AnalystChatModel`, `AnalystEmbeddings`, `AnalystQueryIndex`, `StubSandboxRunner`,
+  `TraceRecordingSession`, `analyst_deps` → `tests/analyst_stubs.py` (S02-D-018).
 - Sandbox results: frozen `SandboxResult(exit_code, timed_out, stdout, stderr)` and
   `DockerStatus(outcome)` (`ok | unreachable | image_missing`, fixed developer `reason`) → `services/sandbox.py`.
 - `make_docker_client() -> DockerClient`, `translate_sandbox_errors()` (context manager),
@@ -208,25 +239,34 @@ on invented tables and ids that are not from the sample PDFs.
   Stdout/stderr keep the last 64 KB each, streamed and decoded as UTF-8 (S02-D-014).
 - Infrastructure exceptions become a chained `SandboxUnavailableError` with a generic message;
   raw details remain DEBUG-only. Services never import agents.
+- Catalog is a deps input, never state: None reloads once, [] follows the no-LLM empty route.
+- Every draft consumes a code attempt; malformed drafts bypass execute and become invalid_output
+  with D-121 feedback. `check` appends completed attempts; only the last feeds the next prompt.
+- Selected tables derive from candidates/selection; files are copied only in execute, never during
+  retrieval. Non-answerable parts receive no code generation. No full DataFrame enters state.
+- Public Client masking keeps raw stdout/stderr and copied retry feedback out of persisted traces;
+  UI state keeps capped output. Injected tracing clients must use the same masking hooks.
 
 ## Commands
 ```bash
-.venv/bin/python -m pytest -q    # 665 passed, 1 live test deselected in 39.54 s after Iteration 2
+.venv/bin/python -m pytest -q    # 724 passed, 2 live tests deselected in 62.40 s after Iteration 3
+.venv/bin/python -m pytest -q tests/unit/test_analyst_graph.py tests/unit/test_analyst_nodes.py tests/unit/test_analyst_state.py tests/unit/test_analyst_tracing.py    # 29 passed, 4.33 s
 .venv/bin/python -m pytest -q tests/unit/test_sandbox.py tests/unit/test_sandbox_health.py tests/functional/test_sandbox_startup.py tests/unit/test_health.py tests/unit/test_check_services.py tests/unit/test_error_screen.py tests/functional/test_error_screen.py
 .venv/bin/python -m pytest -q tests/unit/test_analyst_prompts.py tests/unit/test_analyst_checks.py tests/unit/test_prelude.py tests/unit/test_settings.py tests/unit/test_errors.py tests/unit/test_analyst_pieces.py tests/unit/test_analyst_stubs.py
 ```
 On this Windows machine the venv is a WSL one: `wsl.exe --cd "<repo as /mnt/c/...>" -- .venv/bin/python -m pytest -q`.
 
 ## Known gaps
+- Full combined suite took 62.40 s; NFR-203's 60-second target is a final-iteration verification item.
 - The existing WSL virtual environment lacks `docker==7.1.0`. Fake-client tests do not need it;
   production startup reports unavailable. No dependency was installed or image built/pulled.
 - `SANDBOX_SECTION` is the final iteration's README title; the section is intentionally not
   written until Iteration 5. Exhaustive VCs deferred under D-118 are listed in Iteration 2's record.
 - Real image compatibility, daemon isolation, file sharing and timings remain student live checks.
-- `prepare_run_folder` copies the supplied complete script; Iteration 3's `execute` node adds the
-  prelude and supplies only Selected table paths. Pass `base_dir=FALLBACK_RUN_DIR` when needed.
-- Zero Question parts or more than 3 search phrases from `understand` are handled in Iteration 3
-  (S02-D-001), not by the model class.
+- `execute` adds the prelude and supplies only Selected table paths. Pass
+  `sandbox_base_dir=FALLBACK_RUN_DIR` in deps when system temp is not mountable.
+- Planner rejects malformed/empty plans and keeps at most three phrases. The graph has no pause or
+  checkpointer yet; spec 03 adds the confirmation pause. Saved state holds all node-to-node data.
 - `template_answer` is English only; `respond` writes in the question's language.
 - `merge_status` keeps the first of two emitted entries for one part (cannot happen after a valid
   classification, which rejects repeats).

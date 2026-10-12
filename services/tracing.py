@@ -7,7 +7,8 @@ this client is only needed to talk to LangSmith directly, e.g. to check that the
 """
 
 import logging
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from typing import Any
 from contextlib import contextmanager
 
 from langsmith import Client as LangSmithClient
@@ -24,14 +25,23 @@ _UNREACHABLE_MESSAGE = (
 )
 
 
-def make_langsmith_client(settings: Settings) -> LangSmithClient:
+def make_langsmith_client(
+    settings: Settings, *, hide_inputs: Callable[[dict], dict] | None = None,
+    hide_outputs: Callable[[dict], dict] | None = None,
+) -> LangSmithClient:
     """A LangSmith client. Note: building it already sends one request (`GET /info`)."""
     api_key = settings.LANGSMITH_API_KEY.get_secret_value() if settings.LANGSMITH_API_KEY else None
+    masking: dict[str, Any] = {}
+    if hide_inputs is not None:
+        masking["hide_inputs"] = hide_inputs
+    if hide_outputs is not None:
+        masking["hide_outputs"] = hide_outputs
     return LangSmithClient(
         api_url=settings.LANGSMITH_ENDPOINT,
         api_key=api_key,
         workspace_id=settings.LANGSMITH_WORKSPACE_ID or None,
         timeout_ms=settings.LLM_TIMEOUT_SECONDS * 1000,
+        **masking,
     )
 
 
