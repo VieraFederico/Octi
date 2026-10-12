@@ -1,7 +1,8 @@
 """Turn marked header rows and cell text into clean tabular data (FR-113.2–4, FR-114–118).
 
 Pure functions: no PDF, filesystem or model calls. Header detection belongs to tables.py;
-this module receives already marked header rows and rectangular data rows.
+this module receives already marked header rows and rectangular data rows. The one function that
+goes the other way, `rows_as_text`, prints a cleaned frame for the prompt and the preview.
 """
 
 import re
@@ -167,3 +168,21 @@ def row_headers(frame: pd.DataFrame) -> list[str]:
     if frame.shape[1] == 0 or is_numeric_dtype(frame.iloc[:, 0].dtype):
         return []
     return [cell for cell in frame.iloc[:, 0].tolist() if not _is_missing(cell)]
+
+
+def dtype_name(column: pd.Series) -> str:
+    """The dtype name the catalog uses: `int64`, `float64`, or `text` for everything else (SPEC §7)."""
+    return str(column.dtype) if column.dtype in ("int64", "float64") else "text"
+
+
+def rows_as_text(frame: pd.DataFrame, limit: int, max_cell: int | None = None) -> list[str]:
+    """The first `limit` rows as ' | '-joined lines (S01-D-016).
+
+    A missing cell prints as nothing, a line break inside a cell as a space, so one row is always one
+    line. `max_cell` cuts each cell to that many characters (the Index preview, SPEC §7).
+    """
+    lines = []
+    for row in frame.head(limit).itertuples(index=False):
+        cells = ["" if pd.isna(value) else " ".join(str(value).split()) for value in row]
+        lines.append(" | ".join(cell[:max_cell] for cell in cells))
+    return lines

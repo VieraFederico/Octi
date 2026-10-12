@@ -86,6 +86,49 @@ gotchas, **For the next iteration**).
 6. **Shipped docs in the final iteration** — the README changes of SPEC FR-157 land in Iteration 7.
 7. **No orphaned state** — if stopped mid-way, the suite still passes and the app still starts.
 
+## Parallel mode (optional, D-115)
+
+Every iteration can still be done by one agent, as written. When the student chooses **parallel
+mode** for an iteration, use that iteration's **Parallel split** block and these rules.
+
+**Roles**
+- **Lead** (one agent, the strongest model available): works first and last.
+  1. *Contract step:* before any package starts, write everything the packages share — every
+     shared data type (Pydantic models, state types, data classes), every shared test stub, every
+     new setting or error class — **in its final file**, and every new function the packages must
+     write as a signature with a docstring that raises `NotImplementedError`. Write the contract
+     (names, signatures, data shapes, which package owns which file) into `ARTIFACTS/CONTEXT.md`
+     under "Contract (Iteration N)". Run the full suite: it must still pass.
+  2. *Choose the agents with the student:* before any brief, ask the student **which agent runs each
+     role** — the lead itself and every package (tool: Claude Code, Codex, Cursor or other; and
+     model) — giving a recommendation for each (from the "Models" line of the split block and
+     `ROOT/prompts/models.md`) and the reason, in one table. Wait for the answer; use exactly the
+     agents the student names. If a package goes to a tool other than Claude Code, remind the
+     student that `AGENTS.md` and `.cursorignore` must be in place and that the brief must be pasted
+     whole.
+  3. *Hand-off:* give each package agent its brief (template: `ROOT/prompts/work-package.md`, a
+     local file) with the exact files it owns, what to read, the VCs it must make pass, and its wave.
+     Adapt the brief to the tool the student chose for it.
+  4. *Integration step:* after every package reports done, wire the pieces together, run the full
+     suite, fix the seams, write the iteration's artifacts and record, and give the student the
+     single file list and commit summary for the whole iteration.
+- **Package agents** (one per package; a smaller model is fine): each owns **only** the files listed
+  for its package.
+  - Read only: the spec sections, contract and source files named in the brief.
+  - Test-driven: write the package's tests first, see them fail, then make them pass.
+  - Never edit any file outside the package — not even a test stub or `CONTEXT.md`. If something
+    outside is missing or wrong, stop and report it to the lead.
+  - Never make a design decision. If the spec, the plan or the contract does not say, stop and report.
+  - Done when the package's own tests and its listed VCs pass and the full suite has no new failure
+    caused by the package. Report: files touched, tests added, VCs passing, open questions.
+
+**Waves**: packages in the same wave run at the same time; a later wave starts only after every
+package of the earlier waves is done.
+
+**Unchanged rules**: nobody commits (the student commits once per iteration, from the lead's list);
+no installs; never read or edit `.env`; offline tests only; live and manual checks stay with the
+student in the final iteration.
+
 ## Proposed file map (the student approves it by reviewing this plan)
 
 ```
@@ -454,6 +497,22 @@ returned (indexed metadata, Skipped parts, image notes, message).
 the interrupt payload shape (question text, choices) the UI renders; how the UI
 resumes (`thread_id`, `Command`); how a run reports "paused" vs "finished" to its caller.
 
+**Parallel split (optional)**:
+- **Lead — contract:** `agents/ingestion/state.py` complete (IngestionState fields, the per-run store
+  API); the deps object; every node, router and graph-entry signature (`NotImplementedError`) in
+  `nodes.py` and `graph.py`; `ScriptedChatModel` added to `tests/stubs.py`.
+- **Wave 1 (parallel):**
+  - **WP-A — nodes** · owns `agents/ingestion/nodes.py`, `tests/unit/test_nodes.py` · every node
+    function including the two pause nodes, each unit-tested with fake deps and a hand-built state ·
+    VC-105 … VC-107 (graph part), VC-130, VC-144 (graph part), VC-160, VC-167, VC-168.
+  - **WP-B — wiring and tracing** · owns `agents/ingestion/graph.py`, `tests/unit/test_graph_routing.py`,
+    `tests/unit/test_tracing_config.py` · the routers as pure functions, `build_graph`, the recursion
+    limit, `run_ingestion` / resume, run config and the tracing context · VC-146, VC-156, VC-157.
+  - **WP-C — graph tests** · owns `tests/unit/test_graph.py` · end-to-end tests over the contract for
+    VC-123 (pause), VC-124, VC-134 … VC-137, VC-145, VC-147, VC-159; they stay red until A and B land.
+- **Lead — integration:** make WP-C's tests pass with A + B, full suite, artifacts, record, file list.
+- Models: lead Opus; packages Sonnet.
+
 **Commit message**: `Build the ingestion graph with the validation loop and Add ingestion pauses and LangSmith run labels`
 
 ---
@@ -528,6 +587,27 @@ session-state keys for the active run; the `render_table_card` signature.
 session keys of the catalog; the Library filter's key; how navigation into a filtered
 Library is requested (used by the README description in Iteration 7).
 
+**Parallel split (optional)**:
+- **Lead — contract:** session-state keys (active run, run messages, catalog, Library filter); the
+  run-message data shape; signatures (`NotImplementedError`) for `render_table_card`, the session
+  catalog API (`ui/catalog.py`), the upload decision function (`ui/upload.py`), the run renderer
+  (`ui/ingestion.py`); the stub runner in `tests/stubs.py`.
+- **Wave 1 (parallel):**
+  - **WP-A — Table card** · owns `ui/table_card.py`, `tests/unit/test_table_card.py` · the card of
+    FR-146 (fields, row headers 10 + "and N more", scrollable preview).
+  - **WP-B — catalog and upload checks** · owns `ui/catalog.py`, `ui/upload.py`,
+    `tests/unit/test_catalog_ui.py`, `tests/unit/test_upload.py` · VC-102, VC-103 (pure part),
+    VC-152 (data part), VC-172, VC-173 (pure part).
+  - **WP-C — the run in the chat** · owns `ui/ingestion.py`, `tests/unit/test_ingestion_ui.py` ·
+    status lines, pause buttons, summary · VC-148, VC-149, VC-150.
+  - **WP-D — Library and sidebar** · owns `ui/library.py`, `ui/documents.py`,
+    `tests/functional/test_library.py` · VC-153, VC-154, VC-155.
+- **Lead — integration:** `ui/chat.py`, `ui/sidebar.py`, `ui/new_chat.py` wiring (FR-101, FR-104,
+  FR-161, FR-162), spec 00 test updates (VC-028 / VC-028a), the AppTest functional tests for VC-101,
+  VC-104, VC-170, VC-171, spec 00's VC-025b and VC-031 still passing (VC-151 was removed in spec
+  v0.7), full suite, artifacts, record, file list.
+- Models: lead Opus or Sonnet; packages Sonnet.
+
 **Commit message**: `Run ingestion from the chat with live status, pauses and Table cards and Show the catalog in the Library and sidebar and check uploads against it`
 
 ---
@@ -583,6 +663,17 @@ D-047, D-064, D-071.
 
 **Hands off**: none (end of spec 01). The record lists anything spec 02 needs: `read_table`,
 `load_catalog` / `CatalogEntry`, the Index record fields, the model picker key.
+
+**Parallel split (optional)**:
+- **Wave 1 (parallel):**
+  - **WP-A — live test** · owns `tests/live/test_ingestion_live.py` · FR-159 (shape only, cleans up
+    after itself); never run it — the student does.
+  - **WP-B — README draft** · owns a draft at `ROOT/specs/01-ingestion-plan-artifacts/readme-draft.md`
+    · the README content of this iteration's scope, written from the artifact directory.
+- **Lead — integration:** move the draft into `README.md`, extend `tests/unit/test_readme.py`
+  (VC-162), collect the student's live and manual results (VC-164, VC-166), full suite (VC-163), artifacts,
+  record, file list. Delete `readme-draft.md` before handing over.
+- Models: lead Sonnet; packages Sonnet.
 
 **Commit message**: `Add the live ingestion test and document the Ingestion agent`
 

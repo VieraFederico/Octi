@@ -87,3 +87,13 @@ def make_settings(fake_env: dict[str, str]) -> Callable[..., Settings]:
         return Settings.from_mapping(env)
 
     return build
+
+
+@pytest.fixture
+def table_store_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """An empty, temporary Table store: `services.table_store` reads and writes here, not in `data/tables`."""
+    from services import table_store  # imported here: only tests that ask for the fixture need the module
+
+    folder = tmp_path / "tables"
+    monkeypatch.setattr(table_store, "TABLE_STORE_DIR", folder)
+    return folder

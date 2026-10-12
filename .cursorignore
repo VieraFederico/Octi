@@ -1,0 +1,9 @@
+# Keep secrets out of Cursor's context (D-114). Same syntax as .gitignore.
+.env
+.env.*
+!.env.example
+
+# Local environment and generated data
+.venv/
+data/tables/
+data/sandbox_runs/

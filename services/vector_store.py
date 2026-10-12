@@ -1,9 +1,14 @@
-"""The Pinecone index: a read-only check for the app, and creation for the setup script.
+"""The Pinecone index: a read-only check for the app, creation for the setup script, and records.
 
 Two entry points with different powers (BR-004, D-010):
 - `check_index` only *reads*. The app runs it at start-up and turns the result into a status
   (`ok` / `missing` / `mismatch` / `unreachable`); it never raises for service problems.
 - `ensure_index` may *create* the index. Only `scripts/setup_index.py` calls it.
+
+Spec 01 adds the record operations an agent needs: `open_index` (a handle to the index) and
+`list_records`, `find_versions`, `upsert_records`, `delete_records`. They know nothing about tables
+or documents (D-084): a record is a dict with `id`, `values` and `metadata`, and what lives in the
+metadata is the caller's business.
 
 Pinecone exceptions never leave this module raw: they become leaf errors from `services.errors`
 with the original exception chained as `__cause__` (FR-008). Both functions accept a `client` so
@@ -11,8 +16,9 @@ tests can pass a stub instead of a real `pinecone.Pinecone`.
 """
 
 import logging
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
+from itertools import batched
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
@@ -34,6 +40,11 @@ SETUP_COMMAND = "python -m scripts.setup_index"
 _AUTH_MESSAGE = "Pinecone rejected the API key. Check PINECONE_API_KEY in .env."
 _UNREACHABLE_MESSAGE = "Could not reach Pinecone, or it did not answer in time. Check your connection and try again."
 
+# Code constants (spec 01 §7).
+UPSERT_BATCH_SIZE = 100
+FETCH_BATCH_SIZE = 100  # ids per fetch call (they travel in the URL)
+DELETE_BATCH_SIZE = 1_000  # Pinecone's limit of ids per delete call
+
 Outcome = Literal["ok", "missing", "mismatch", "unreachable"]
 Shape = tuple[int, str]  # (dimension, metric)
 
@@ -44,6 +55,8 @@ class IndexClient(Protocol):
     def describe_index(self, name: str) -> Any: ...
 
     def create_index(self, *, name: str, dimension: int, metric: str, spec: Any, timeout: int) -> Any: ...
+
+    def Index(self, name: str = "", host: str = "", **kwargs: Any) -> Any: ...  # noqa: N802 (the SDK's name)
 
 
 @dataclass(frozen=True)
@@ -135,3 +148,64 @@ def _translate_pinecone_errors() -> Iterator[None]:
         # in every case the index state cannot be known right now.
         logger.debug("Pinecone call failed", exc_info=True)
         raise VectorStoreUnreachableError(_UNREACHABLE_MESSAGE) from exc
+
+
+# --- Records (spec 01 FR-138, FR-149) ----------------------------------------------------------
+
+
+def open_index(settings: Settings, client: IndexClient | None = None) -> Any:
+    """A handle to the Octi index, for the record functions below.
+
+    Record calls go to the index's own host, which Pinecone reports in `describe_index`. Raises
+    `VectorStoreAuthenticationError` or `VectorStoreUnreachableError` (also when the index is gone).
+    """
+    client = client if client is not None else make_pinecone_client(settings)
+    with _translate_pinecone_errors():
+        description = client.describe_index(settings.PINECONE_INDEX_NAME)
+        return client.Index(host=description.host)
+
+
+def list_records(index: Any, namespace: str) -> list[dict[str, Any]]:
+    """The metadata of every record in the namespace.
+
+    Pinecone lists only ids, page by page; the metadata is then fetched in batches (FR-149).
+    """
+    with _translate_pinecone_errors():
+        ids = [item.id for page in index.list(namespace=namespace) for item in page.vectors]
+        records: list[dict[str, Any]] = []
+        for batch in batched(ids, FETCH_BATCH_SIZE):
+            fetched = index.fetch(ids=list(batch), namespace=namespace)
+            records.extend(dict(vector.metadata or {}) for vector in fetched.vectors.values())
+        return records
+
+
+def find_versions(index: Any, namespace: str, source_file: str) -> list[dict[str, Any]]:
+    """The metadata of every record whose `source_file` equals `source_file`, across all pages.
+
+    A lookup by metadata, not a similarity search: no query vector is involved (S01-D-017, A-103).
+    """
+    with _translate_pinecone_errors():
+        records: list[dict[str, Any]] = []
+        token: str | None = None
+        while True:
+            page = index.fetch_by_metadata(
+                filter={"source_file": source_file}, namespace=namespace, pagination_token=token
+            )
+            records.extend(dict(vector.metadata or {}) for vector in page.vectors.values())
+            if page.pagination is None or not page.pagination.next:
+                return records
+            token = page.pagination.next
+
+
+def upsert_records(index: Any, namespace: str, records: Sequence[dict[str, Any]]) -> None:
+    """Write records (`{"id", "values", "metadata"}`) in batches of 100; an existing id is overwritten."""
+    with _translate_pinecone_errors():
+        for batch in batched(records, UPSERT_BATCH_SIZE):
+            index.upsert(vectors=list(batch), namespace=namespace, show_progress=False)
+
+
+def delete_records(index: Any, namespace: str, ids: Sequence[str]) -> None:
+    """Delete records by id; an id that does not exist is ignored by Pinecone."""
+    with _translate_pinecone_errors():
+        for batch in batched(ids, DELETE_BATCH_SIZE):
+            index.delete(ids=list(batch), namespace=namespace)

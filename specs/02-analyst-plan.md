@@ -94,6 +94,49 @@ deviations and why, gotchas, **For the next iteration**).
 6. **Shipped docs in the final iteration** — the README changes of SPEC FR-243 land in Iteration 5.
 7. **No orphaned state** — if stopped mid-way, the suite still passes and the app still starts.
 
+## Parallel mode (optional, D-115)
+
+Every iteration can still be done by one agent, as written. When the student chooses **parallel
+mode** for an iteration, use that iteration's **Parallel split** block and these rules.
+
+**Roles**
+- **Lead** (one agent, the strongest model available): works first and last.
+  1. *Contract step:* before any package starts, write everything the packages share — every
+     shared data type (Pydantic models, state types, data classes), every shared test stub, every
+     new setting or error class — **in its final file**, and every new function the packages must
+     write as a signature with a docstring that raises `NotImplementedError`. Write the contract
+     (names, signatures, data shapes, which package owns which file) into `ARTIFACTS/CONTEXT.md`
+     under "Contract (Iteration N)". Run the full suite: it must still pass.
+  2. *Choose the agents with the student:* before any brief, ask the student **which agent runs each
+     role** — the lead itself and every package (tool: Claude Code, Codex, Cursor or other; and
+     model) — giving a recommendation for each (from the "Models" line of the split block and
+     `ROOT/prompts/models.md`) and the reason, in one table. Wait for the answer; use exactly the
+     agents the student names. If a package goes to a tool other than Claude Code, remind the
+     student that `AGENTS.md` and `.cursorignore` must be in place and that the brief must be pasted
+     whole.
+  3. *Hand-off:* give each package agent its brief (template: `ROOT/prompts/work-package.md`, a
+     local file) with the exact files it owns, what to read, the VCs it must make pass, and its wave.
+     Adapt the brief to the tool the student chose for it.
+  4. *Integration step:* after every package reports done, wire the pieces together, run the full
+     suite, fix the seams, write the iteration's artifacts and record, and give the student the
+     single file list and commit summary for the whole iteration.
+- **Package agents** (one per package; a smaller model is fine): each owns **only** the files listed
+  for its package.
+  - Read only: the spec sections, contract and source files named in the brief.
+  - Test-driven: write the package's tests first, see them fail, then make them pass.
+  - Never edit any file outside the package — not even a test stub or `CONTEXT.md`. If something
+    outside is missing or wrong, stop and report it to the lead.
+  - Never make a design decision. If the spec, the plan or the contract does not say, stop and report.
+  - Done when the package's own tests and its listed VCs pass and the full suite has no new failure
+    caused by the package. Report: files touched, tests added, VCs passing, open questions.
+
+**Waves**: packages in the same wave run at the same time; a later wave starts only after every
+package of the earlier waves is done.
+
+**Unchanged rules**: nobody commits (the student commits once per iteration, from the lead's list);
+no installs; never read or edit `.env`; offline tests only; live and manual checks stay with the
+student in the final iteration.
+
 ## Proposed file map (the student approves it by reviewing this plan)
 
 ```
@@ -187,6 +230,21 @@ in `ROOT/specs/01-ingestion.md` §7 (the Class 4 style to follow); `ROOT/service
 **Hands off**: names and signatures of every function above; the alias rule; the `emit` JSON shape;
 where each prompt constant lives; anything about `CatalogEntry` fields you relied on.
 
+**Parallel split (optional)**:
+- **Lead — contract:** the settings and the `SandboxError` leaf (shared files), `agents/analyst/schemas.py`
+  complete (SPEC §7 models), `RULES_BLOCK` in `prompts.py`, and signatures (`NotImplementedError`) for
+  every function of `prompts.py`, `checks.py` and `prelude.py`; `ARTIFACTS/` created.
+- **Wave 1 (parallel):**
+  - **WP-A — prompts** · owns `agents/analyst/prompts.py` (except `RULES_BLOCK`),
+    `tests/unit/test_analyst_prompts.py` · the four prompts and builders · VC-205, VC-210, VC-213
+    (prompt part), VC-214, VC-241, VC-246. **Use a strong model (Opus):** prompt writing is judgement.
+  - **WP-B — checks** · owns `agents/analyst/checks.py`, `tests/unit/test_analyst_checks.py` ·
+    VC-211 (check part), VC-219 (classification), VC-222 (merge), VC-225, VC-226 (function part).
+  - **WP-C — prelude** · owns `agents/analyst/prelude.py`, `tests/unit/test_prelude.py` · VC-223.
+- **Lead — integration:** full suite, VC-238, artifacts, record (with the four prompts' full text),
+  file list.
+- Models: lead Opus; WP-A Opus; WP-B, WP-C Sonnet.
+
 **Commit message**: `Add the Analyst's models, prompts, plain-code checks and sandbox prelude`
 
 ---
@@ -246,6 +304,21 @@ stderr=)`, `container.remove()`, `images.get()`, `client.ping()`).
 `FakeDockerClient` and how to script it; the README section title the error screen points to (the
 README itself is written in Iteration 5).
 
+**Parallel split (optional)**:
+- **Lead — contract:** signatures (`NotImplementedError`) of `make_docker_client`,
+  `translate_sandbox_errors`, `prepare_run_folder`, `run_script`, `check_docker` in
+  `services/sandbox.py`; the `FakeDockerClient` in `tests/analyst_stubs.py`; the Docker status shape
+  the startup check uses.
+- **Wave 1 (parallel):**
+  - **WP-A — sandbox service** · owns `services/sandbox.py`, `sandbox/Dockerfile`,
+    `tests/unit/test_sandbox.py` · VC-215 … VC-218, VC-239 (container part), VC-242 (Dockerfile).
+  - **WP-B — startup and service check** · owns the Docker parts of `ui/startup.py`,
+    `ui/error_screen.py`, `services/health.py`, `scripts/check_services.py` and their tests ·
+    VC-229, VC-230. (Ask the student before editing these shared files while spec 01 is still being
+    implemented — D-105.)
+- **Lead — integration:** `.gitignore` entry, full suite, artifacts, record, file list.
+- Models: lead Opus; WP-A Opus (security-critical); WP-B Sonnet.
+
 **Commit message**: `Add the Docker sandbox service and its startup check`
 
 ---
@@ -295,6 +368,23 @@ context of spec 01 FR-154), `agents/ingestion/indexing.py` (`load_catalog`), `se
 shapes the UI renders (node name + payload) and the final state fields; how the caller passes the
 window.
 
+**Parallel split (optional)**:
+- **Lead — contract:** `agents/analyst/state.py` complete; the deps object; every node, router and
+  entry signature (`NotImplementedError`) in `nodes.py` and `graph.py`; `StubSandboxRunner` in
+  `tests/analyst_stubs.py`.
+- **Wave 1 (parallel):**
+  - **WP-A — nodes** · owns `agents/analyst/nodes.py`, `tests/unit/test_analyst_nodes.py` · every node
+    unit-tested with fake deps · VC-202, VC-204, VC-207, VC-208, VC-209, VC-224, VC-227, VC-228,
+    VC-240, VC-248 (node parts).
+  - **WP-B — wiring and tracing** · owns `agents/analyst/graph.py`, `tests/unit/test_analyst_routing.py`
+    · routers, `build_graph`, `run_analysis`, run config, labels, the `execute` span attributes ·
+    VC-236, VC-237, VC-239 (trace part).
+  - **WP-C — route tests** · owns `tests/unit/test_analyst_graph.py` · one end-to-end test per route
+    of SPEC §7's diagram, plus VC-203, VC-206, VC-211 … VC-213, VC-219 … VC-222, VC-225, VC-226 (graph
+    parts); red until A and B land.
+- **Lead — integration:** make WP-C's tests pass, full suite, artifacts, record (route list), file list.
+- Models: lead Opus; packages Sonnet (WP-B may need Opus for routing).
+
 **Commit message**: `Build the Analyst graph with selection, self-correction and status merge`
 
 ---
@@ -332,6 +422,19 @@ spec 00" (header), NFR-206; `ROOT/DECISIONS.md` D-094, D-096, D-097, D-104; spec
 
 **Hands off**: session keys of an Analysis run; how its message is stored; anything the live tests
 need to start a real run.
+
+**Parallel split (optional)**:
+- **Lead — contract:** session keys of an Analysis run, the stored message shape, signatures
+  (`NotImplementedError`) of the renderer and of the window builder; a stub runner in
+  `tests/analyst_stubs.py`.
+- **Wave 1 (parallel):**
+  - **WP-A — answer message** · owns `ui/analysis.py`, `tests/unit/test_analysis_ui.py` · status box,
+    badge, text, "Missing:" lines, folded sections, reduced and error layouts · VC-231 … VC-234.
+  - **WP-B — window builder** · owns a pure `build_window(messages)` in `ui/analysis_window.py` and
+    `tests/unit/test_analysis_window.py` · VC-203 (UI part).
+- **Lead — integration:** `ui/chat.py` wiring (FR-201, one run at a time, text + PDF order), spec 00
+  test updates (VC-027, VC-028a), AppTest for VC-201, VC-206 (UI part), VC-235, full suite, artifacts, record, file list.
+- Models: lead Sonnet; packages Sonnet.
 
 **Commit message**: `Show Analysis runs in the chat with their answer and evidence`
 
@@ -387,6 +490,17 @@ who was never here.
 state fields the evaluation reads (`answer_status`, `part_outcomes`, `attempts_history`, `error`),
 the LangSmith run name and metadata to filter on, and where a human-in-the-loop `interrupt` would go
 (after `select`).
+
+**Parallel split (optional)**:
+- **Wave 1 (parallel):**
+  - **WP-A — live tests** · owns `tests/live/test_sandbox_live.py`, `tests/live/test_analyst_live.py`
+    · FR-245; never run them — the student does.
+  - **WP-B — README draft** · owns a draft at `ROOT/specs/02-analyst-plan-artifacts/readme-draft.md` ·
+    this iteration's README content, written from the artifact directory.
+- **Lead — integration:** move `tests/analyst_stubs.py` into `tests/stubs.py` (D-105), the draft into
+  `README.md`, `tests/unit/test_readme.py` (VC-242, VC-243), the student's live and manual results
+  (VC-245, VC-247), full suite (VC-244), artifacts, record, file list. Delete `readme-draft.md`.
+- Models: lead Sonnet; packages Sonnet.
 
 **Commit message**: `Add the Analyst live tests and document the Analyst agent`
 

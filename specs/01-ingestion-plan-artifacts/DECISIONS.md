@@ -155,3 +155,97 @@ five regions. Deterministic save: `tobytes(garbage=3, deflate=True, no_new_id=Tr
 **Consequences**: spec 03 imports the constants listed in `CONTEXT.md`. The PDFs are byte-identical
 for the same PyMuPDF version.
 **Status**: accepted by the student (2026-10-12).
+
+## S01-D-014: `CatalogEntry` also carries `row_headers_total` and a datetime (Iteration 4)
+**Context**: D-080 defines `CatalogEntry` = `TableMetadata` + `document_sha`, `ingested_at`, `preview`,
+`n_rows`, `n_cols`. A card says "first 10 and N more", but the Index stores only 50 row headers.
+**Decision**: add `row_headers_total: int` (the Index already stores it). `row_headers` of an entry
+holds at most the first 50. `ingested_at` is a timezone-aware `datetime` (parsed from the ISO text).
+**Rejected**: derive "N more" from `n_rows` (row headers skip missing labels and the first column may
+be numeric, so the two counts differ).
+**Consequences**: spec 02 and the Library read `entry.row_headers_total`. Spec tab: add the field to
+SPEC §7 "Catalog interface". Nothing removed.
+**Status**: accepted by the student (2026-10-12).
+
+## S01-D-015: `validate` takes a `TableEnrichment` or the raw dict (Iteration 4)
+**Context**: the plan leaves open how an answer that does not parse reaches `validate`.
+**Decision**: `validate(answer: TableEnrichment | dict, table)`. A dict is checked with
+`TableEnrichment.model_validate`; each pydantic error becomes one sentence naming the field
+(`columns[2].unit is too long: at most 40 characters`). When the shape fails, only the shape
+sentences are returned (nothing else can be read); the next attempt is checked in full. No JSON
+string parsing. Iteration 5's `enrich` must hand `validate` the raw dict when structured output
+does not parse (`include_raw=True`).
+**Rejected**: also accepting a JSON string (a structured-output call does not yield bare text; one more
+branch to test).
+**Consequences**: a retry's `Previous answer` section accepts the same two types.
+**Status**: accepted by the student (2026-10-12).
+
+## S01-D-016: Small signature additions the plan's drafts lacked (Iteration 4)
+**Context**: the plan names `build_messages(table, context, previous, feedback)`,
+`assemble_metadata(enrichment, table)` and `index_metadata(metadata, table, document)`, but the file
+name is not in an `ExtractedTable`, and "document" is only the hash.
+**Decision**: `build_messages(table, context, source_file, previous=None, feedback=())`;
+`assemble_metadata(enrichment, table, source_file)`; `index_metadata(metadata, table, document_sha,
+ingested_at=None)` (the time is a parameter so tests can fix it). Two helpers live in
+`pdf/cleaning.py` because both the prompt and the Index record need them: `dtype_name(series)`
+(`int64`, `float64`, else `text`) and `rows_as_text(frame, limit, max_cell=None)` (rows as `a | b`
+lines, a gap as nothing, a line break as a space). The 20 rows sent to the LLM are not cut per cell
+(the preview's 40-character cut is only for the Index).
+**Rejected**: a new module for two small functions (D-084 file map); cutting LLM cells (not in the spec).
+**Consequences**: a pathological Table (huge cells) can exceed the 24,000-character budget; VC-165
+holds for ordinary tables (measured: 15,464 characters for 20 columns x 20 rows with 15-character cells
+and 2,000 characters of context). Noted as a known gap.
+**Status**: proposed; awaiting the student's review.
+
+## S01-D-017: `find_versions` uses `fetch_by_metadata`, not a query (Iteration 4)
+**Context**: A-103 expected "querying with a metadata filter". The installed SDK (pinecone 10.0.0)
+has `Index.fetch_by_metadata(filter=..., pagination_token=...)`, a plain lookup with pagination.
+**Decision**: `find_versions` loops `fetch_by_metadata({"source_file": name})` until `pagination` is
+empty. A query would need a made-up non-zero vector and is capped by `top_k`.
+**Rejected**: `query` with a dummy vector.
+**Consequences**: A-103 still holds in spirit (a metadata filter on `source_file`); the live check in
+Iteration 7 must confirm `fetch_by_metadata` on the student's serverless index. The record functions
+take the namespace as an argument (`list_records(index, namespace)`), and `open_index(settings)`
+builds the handle from the index host.
+**Status**: accepted by the student (2026-10-12).
+
+## S01-D-018: `write_document` reads before it writes, and rolls back only what it created (Iteration 4)
+**Context**: D-067 finds old versions in step 4. If a re-ingest of the same bytes fails at the
+upsert, "remove what this run wrote" would also delete the identical version already there (BR-105).
+**Decision**: `write_document` first asks Pinecone for the records carrying `source_file`
+(a read, so the write order is unchanged and a failing lookup stops the run before anything is
+written). Rollback deletes only ids that were not already there. Step 4 deletes every found id that
+is not one of the new ids (a superset of "another document hash": ids embed the hash prefix, so
+the two sets are equal unless extraction changed between runs). In step 4 records are deleted before
+files, so a half-failed delete leaves a record with its file, never a record without a file.
+**Rejected**: keep the lookup in step 4 and accept the edge case.
+**Consequences**: the same-bytes case is covered by a test. Mutation order is still embed, files,
+upsert, delete (VC-140).
+**Status**: rollback and lookup-first accepted by the student (2026-10-12); the "not one of the new ids"
+wording of step 4 awaits review.
+
+## S01-D-019: `read_table` returns the frame exactly as extraction built it (Iteration 4)
+**Context**: pandas 3 reads text columns from Parquet as its `str` dtype with NaN gaps; extraction
+builds `object` columns with `None` gaps.
+**Decision**: `read_table` casts every non-numeric column back to `object` and restores `None` for gaps,
+so `assert_frame_equal(read_table(id), written)` passes strictly.
+**Rejected**: accept `str` and compare through `dtype_name` only.
+**Consequences**: the Analyst gets the frame ingestion saw. `write_table` writes through a temporary
+file and `os.replace`, so a crash never leaves a half-written file. Ids with a path separator are
+refused (`TableStoreError`) because an id is a file name.
+**Status**: cast back accepted by the student (2026-10-12); temporary file and id check awaiting review.
+
+## S01-D-020: Record details the spec leaves open (Iteration 4)
+**Context**: SPEC §7 fixes the Index record fields; some formats were open.
+**Decision**: preview = column names line, then up to 5 rows, `a | b` per line, cells cut to 40
+characters, whole text cut to 2,000 (accepted pipe format). The 38 KB guard is measured as the
+UTF-8 bytes of the metadata as JSON (`38 * 1024`). The embedding text leaves out the `Row headers`
+line when a Table has none. `write_document` takes `TableToIndex` items (metadata, full frame, flat
+record metadata built and guard-checked at assembly) and returns `WriteResult(table_ids,
+previous_removed)`; with no Tables it makes no call at all. Prompt: the Columns table prints names
+unescaped; any run of 3 or more backticks in PDF-derived text becomes the same number of
+apostrophes; retry sections come after `First rows` and before `Task`.
+**Rejected**: CSV preview; character count for the guard.
+**Consequences**: Iteration 5 builds `TableToIndex` and calls `write_document`; Iteration 6's card
+reads the preview text as is.
+**Status**: preview format accepted by the student (2026-10-12); the rest awaits review.

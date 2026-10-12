@@ -1,4 +1,4 @@
-# CONTEXT — Spec 01 Ingestion agent (after Iteration 3)
+# CONTEXT — Spec 01 Ingestion agent (after Iteration 4)
 
 Starting point: spec 00 complete (`specs/00-foundation-plan-artifacts/CONTEXT.md`, capsule
 `specs/00-foundation-frozen.md`). This file describes the codebase as it stands now.
@@ -30,8 +30,19 @@ Starting point: spec 00 complete (`specs/00-foundation-plan-artifacts/CONTEXT.md
     overlap rule S01-D-011).
   - `scripts/make_sample_pdfs.py` writes the two committed sample PDFs from module-level constants
     (D-070, D-107, S01-D-013); `data/tables/` is git-ignored.
-- Not yet: prompts, validation, records, Table store, Pinecone writes, the graph, the UI changes
-  (Iterations 4–7).
+- Spec 01, Iteration 4 done (pure pieces around the LLM, and storing):
+  - `schemas.py` now also holds the SPEC §7 Pydantic models (`ColumnDescription`, `TableEnrichment`,
+    `ColumnMetadata`, `TableMetadata`, `CatalogEntry`; S01-D-014).
+  - `prompts.py`: frozen prompt v1 (equal to SPEC §7), two worked examples, `build_messages`.
+  - `validation.py`: the five checks of FR-131 as one-sentence feedback (S01-D-015).
+  - `indexing.py`: metadata assembly, flat Index metadata, 38 KB guard, embedding text,
+    `entry_from_record`, `load_catalog`, and `write_document` (safe write order, rollback; S01-D-018).
+  - `services/table_store.py`: Parquet Table store (`write_table`, `read_table`, `delete_tables`).
+  - `services/vector_store.py`: + `open_index`, `list_records`, `find_versions`, `upsert_records`,
+    `delete_records` (S01-D-017).
+  - `tests/stubs.py`: + `extracted_table`, `FakeEmbeddings`, `FakePineconeIndex`; `tests/conftest.py`:
+    + `table_store_dir`.
+- Not yet: the graph (state, nodes, pauses, tracing), the UI changes (Iterations 5–7).
 
 ## File map
 Spec 01 (new or changed this spec):
@@ -40,19 +51,32 @@ Spec 01 (new or changed this spec):
 - `agents/ingestion/pdf/document.py` — `open_document`, `pages_without_text`, `is_repeated`,
   `reported_image_pages`; constants `MIN_IMAGE_PAGE_FRACTION`, `MIN_PAGES_FOR_REPETITION`.
 - `agents/ingestion/pdf/cleaning.py` — `flatten_headers`, `clean_column`, `build_dataframe`,
-  `row_headers`; deterministic cells-to-data conversion, no PDF or external I/O.
+  `row_headers`, `dtype_name`, `rows_as_text`; deterministic cells-to-data conversion (and the
+  frame-to-text printing the prompt and preview share), no PDF or external I/O.
 - `agents/ingestion/pdf/tables.py` — `document_sha`, `make_table_id`, `extract_tables`; constants
   `MAX_HEADER_ROWS`, `YEAR_RANGE`, `UNREADABLE_SHARE`, `MERGE_TOLERANCE`.
 - `agents/ingestion/pdf/context.py` — `collect_context`; constants `MAX_PARAGRAPH_CHARS` (600),
   `MAX_CONTEXT_CHARS` (2,000), `MAX_CAPTION_FALLBACK_LINES`, `MAX_HEADING_WORDS`, `LARGER_FONT`.
-- `agents/ingestion/schemas.py` — `ExtractedTable`, `TableContext` (plain dataclasses; the §7
-  Pydantic models join in Iteration 4), type alias `Box`.
+- `agents/ingestion/schemas.py` — `ExtractedTable`, `TableContext` (plain dataclasses), type alias `Box`;
+  the §7 Pydantic models `ColumnDescription`, `TableEnrichment`, `ColumnMetadata`, `TableMetadata`,
+  `CatalogEntry`.
+- `agents/ingestion/prompts.py` — `SYSTEM_PROMPT`, `FEW_SHOT_EXAMPLES` (`FewShotExample`),
+  `build_messages`; constant `ROWS_TO_LLM`.
+- `agents/ingestion/validation.py` — `validate`; constant `GENERIC_NAME`.
+- `agents/ingestion/indexing.py` — `assemble_metadata`, `index_metadata`, `exceeds_size_guard`,
+  `embedding_text`, `entry_from_record`, `load_catalog`, `write_document`, `TableToIndex`,
+  `WriteResult`; constants `ROW_HEADERS_STORED`, `PREVIEW_ROWS`, `PREVIEW_CELL_CHARS`,
+  `PREVIEW_MAX_CHARS`, `METADATA_LIMIT_BYTES`.
+- `services/table_store.py` — `TABLE_STORE_DIR`, `write_table`, `read_table`, `delete_tables`.
 - `scripts/make_sample_pdfs.py` — sample PDF generator and the table-data constants.
 - `data/sample_pdfs/acme-annual-report-2023.pdf`, `data/sample_pdfs/informe-regional-2024.pdf` —
   committed, generated (byte-identical on re-run with PyMuPDF 1.28.2).
 - `.gitignore` — + `data/tables/`.
 - `services/settings.py` — + `INGESTION_MAX_RETRIES`.
 - `services/errors.py` — + `DocumentError` leaves, `TableStoreError` (tree in the module docstring).
+- `services/vector_store.py` — spec 00's check/create + `open_index`, `list_records`, `find_versions`,
+  `upsert_records`, `delete_records` (agent-agnostic; constants `UPSERT_BATCH_SIZE`, `FETCH_BATCH_SIZE`,
+  `DELETE_BATCH_SIZE`).
 - `.env.example` — + "Ingestion agent" section with `INGESTION_MAX_RETRIES`.
 - `tests/pdf_fixtures.py` — fixture PDF builders (plain module, like `tests/stubs.py`).
 - `tests/unit/test_pymupdf_assumptions.py` — A-101, A-102.
@@ -64,17 +88,23 @@ Spec 01 (new or changed this spec):
 - `tests/unit/test_sample_pdfs.py` — VC-161: repeatable output, committed = fresh, every table's
   values equal the constants, constants consistent (12 cases).
 - `tests/unit/test_context.py` — VC-126 … VC-129, VC-169 context part, sample captions (17 cases).
+- `tests/unit/test_prompts.py` — VC-131 (message part), VC-132, VC-122 (prompt part), VC-165 (14 cases).
+- `tests/unit/test_validation.py` — VC-133 (a)–(e) and edge cases; few-shot answers pass (22 cases).
+- `tests/unit/test_indexing.py` — VC-138, VC-139, VC-140 … VC-143, VC-144 (function part), VC-147
+  (write part), VC-172 (data part), VC-174, rollback and same-bytes cases (32 cases).
+- `tests/unit/test_table_store.py` — round trip with exact dtypes, overwrite, delete, disk and id errors.
+- `tests/unit/test_vector_store.py` — + the record functions against `FakePineconeIndex`.
 - `tests/unit/test_settings.py`, `tests/unit/test_errors.py` — extended (VC-158, VC-011).
 
 Spec 00 (unchanged):
-- `services/logging_setup.py`, `services/llm.py`, `services/vector_store.py`, `services/tracing.py`,
-  `services/health.py` — logging, LiteLLM, Pinecone, LangSmith, service checks.
+- `services/logging_setup.py`, `services/llm.py`, `services/tracing.py`, `services/health.py` —
+  logging, LiteLLM, LangSmith, service checks (`vector_store.py` is listed under spec 01 above).
 - `scripts/setup_index.py`, `scripts/check_services.py` — thin CLIs.
 - `app.py` and `ui/` — Streamlit entry and views (`chat.py`, `sidebar.py`, `documents.py` with the
   `load_documents()` seam, `library.py` empty state, `new_chat.py`, `error_screen.py`, `bubble.py`,
   `logo.py`, `style.py`, `icons.py`, `startup.py`).
 - `tests/conftest.py` (autouse network and `.env` guards; `fake_env`, `make_settings`),
-  `tests/stubs.py`, `tests/unit/`, `tests/functional/` (AppTest), `tests/live/test_smoke.py`.
+  `tests/stubs.py`, spec 01 adds the fixture `table_store_dir`, `tests/unit/`, `tests/functional/` (AppTest), `tests/live/test_smoke.py`.
 - `README.md`, `requirements.txt` (spec 01 deps pinned: langgraph 1.2.14, pandas 3.0.6,
   pyarrow 25.0.1, pymupdf 1.28.2), `pytest.ini`, `.gitattributes` (LF everywhere, D-044).
 
@@ -100,6 +130,24 @@ Spec 01:
   unreadable)`; `parts` = `[(page, box)]`; unreadable → `frame None`, no columns → `agents/ingestion/schemas.py`.
 - Context: `collect_context(doc, table) -> TableContext(section, caption, before, after, footnotes)`
   → `agents/ingestion/pdf/context.py`, `agents/ingestion/schemas.py`.
+- Models (SPEC §7): `TableEnrichment` (LLM output), `TableMetadata`, `CatalogEntry` (= metadata +
+  `document_sha`, `ingested_at` datetime, `preview`, `n_rows`, `n_cols`, `row_headers_total`; its
+  `row_headers` holds at most 50) → `agents/ingestion/schemas.py`.
+- Prompt: `build_messages(table, context, source_file, previous=None, feedback=()) -> list[BaseMessage]`
+  (system, two example pairs, human) → `agents/ingestion/prompts.py`.
+- Validation: `validate(answer: TableEnrichment | dict, table) -> list[str]` (empty = valid) →
+  `agents/ingestion/validation.py`.
+- Record building: `assemble_metadata(enrichment, table, source_file)`, `index_metadata(metadata, table,
+  document_sha, ingested_at=None) -> dict`, `exceeds_size_guard(flat)`, `embedding_text(metadata)`,
+  `entry_from_record(record)` → `agents/ingestion/indexing.py`.
+- Storing: `write_document(settings, source_file, document_sha, tables: Sequence[TableToIndex], *,
+  embeddings, index) -> WriteResult(table_ids, previous_removed)`; `load_catalog(settings, index=None) ->
+  list[CatalogEntry]` → `agents/ingestion/indexing.py`.
+- Table store (spec 02 reads it): `read_table(table_id) -> DataFrame`, `write_table`, `delete_tables`
+  → `services/table_store.py`.
+- Records in Pinecone: `open_index(settings, client=None)`, `list_records(index, namespace)`,
+  `find_versions(index, namespace, source_file)`, `upsert_records(index, namespace, records)`,
+  `delete_records(index, namespace, ids)` → `services/vector_store.py`.
 - Sample PDFs: `write_sample_pdfs(out_dir=OUT_DIR) -> list[Path]`, `build_acme_pdf()`,
   `build_informe_pdf()`, `ACME_FILE`, `INFORME_FILE` → `scripts/make_sample_pdfs.py`
   (`python -m scripts.make_sample_pdfs`).
@@ -118,6 +166,9 @@ Spec 01:
   - `INFORME_YEARS` = (2022, 2023); `INFORME_POPULATION[region][year]` (thousands) — Cuadro 1;
     `INFORME_LABOUR[region][column]`, `INFORME_LABOUR_COLUMNS` = Tasa de desempleo, Tasa de empleo
     (%) — Cuadro 2.
+- Test fakes: `extracted_table(columns, rows, table_id=, pages=)`, `FakeEmbeddings(dimension, error, events)`,
+  `FakePineconeIndex(fail_on, fail_after, error, page_size, events)` (+ `put`, `ids`, `calls`,
+  `upsert_batches`), fixture `table_store_dir` → `tests/stubs.py`, `tests/conftest.py`.
 - Test fixtures: `Page(blocks, images)`, `make_pdf(*pages) -> bytes`, `heading`, `paragraph`,
   `table(header, rows, merged_header=...)`, `Image(rect, shade)`, `image_covering(fraction, shade=)`,
   `image_only_page(shade=)`, `text_page(text, *images)`, `encrypt(pdf, user_password=)`, constants
@@ -162,6 +213,20 @@ Spec 00 (unchanged):
 - Sample PDFs are drawn from the script's constants only; change the data there, regenerate, commit
   both PDFs.
 - Spec §7 code constants live as named module constants next to the code that uses them.
+- LLM output is meaning only; every fact comes from code (BR-101). PDF-derived text goes into the
+  prompt only inside a fence, a table cell or a field value, and any run of 3+ backticks becomes
+  apostrophes (BR-102). The system message holds no per-call data.
+- `validate` returns shape sentences alone when the answer does not parse; otherwise checks 2–5 together
+  (S01-D-015). Feedback sentences are for the model and traces, never for the chat (BR-106).
+- The Index record's metadata is flat (strings, numbers, lists of strings); `row_headers` are cut to 50
+  with `row_headers_total`. Guard: UTF-8 JSON bytes <= 38 * 1024 (S01-D-020).
+- Write order (`write_document`): read same-name records, embed, Parquet files, upsert, delete stale
+  records then their files. A failure before step 4 removes only ids this run created (S01-D-018).
+- `read_table` returns the frame as extraction built it: text columns `object` with `None` gaps
+  (S01-D-019). Table ids are file names: ids with a path separator are refused.
+- Record functions take the namespace explicitly and know nothing about tables (D-084).
+- A fake class that defines a method named `list` must define it last (the name shadows the builtin in
+  later annotations in the class body).
 - `pymupdf.open(stream=..., filetype="pdf")` raises `pymupdf.FileDataError` (also for empty bytes,
   via its subclass `EmptyFileError`) — the only exception `open_document` translates.
 - One module per external service holds its client factory and error translation (D-034); services
@@ -175,7 +240,7 @@ Spec 00 (unchanged):
 
 ## Commands
 ```bash
-.venv/bin/python -m pytest -q                                   # offline suite, ~35 s (334 passed, 1 deselected)
+.venv/bin/python -m pytest -q                                   # offline suite, ~35 s (429 passed, 1 deselected)
 .venv/bin/python -m pytest -q tests/unit/test_tables.py tests/unit/test_sample_pdfs.py tests/unit/test_context.py
 .venv/bin/python -m scripts.make_sample_pdfs                     # regenerate data/sample_pdfs/ (offline)
 .venv/bin/python -m pytest -q tests/unit/test_cleaning.py        # 60 cases, pure cells-to-data
@@ -189,7 +254,6 @@ streamlit run app.py
 ```
 
 ## Known gaps
-- VC-122 checks hints at extraction; prompt rendering is Iteration 4.
 - VC-123's `�` cells are simulated (S01-D-010); the graph-level pause is Iteration 5.
 - PyMuPDF's "external" header (text above a borderless table) is ignored (S01-D-008).
 - A word hyphenated at a line end keeps a space in context text (`full- time`); not dehyphenated.
@@ -206,3 +270,12 @@ streamlit run app.py
   `find_tables()` call in a process; harmless (pytest captures it).
 - From spec 00: AppTest cannot attach files to the composer (S00-D-018); `Settings` defaults are not
   exported to the environment (A-006, tracing must stay on when a variable is omitted — FR-154).
+- `find_versions` relies on `Index.fetch_by_metadata` of pinecone 10; the fakes cannot prove the real
+  service accepts it on the student's index (live check, Iteration 7).
+- LLM rows are not cut per cell: a Table with huge cells can pass the 24,000-character prompt budget
+  (S01-D-016). No code enforces the budget yet.
+- `load_catalog` assumes every record in the namespace was written by Octi (a foreign record with no
+  `columns_info` raises `KeyError`).
+- `embed_documents` is called once with all texts of a Document (no batching).
+- Pinecone's `list` is eventually consistent: records upserted a moment ago may be missing from a
+  catalog reload (the UI updates the session catalog from the run's own result, D-067).
