@@ -1,6 +1,7 @@
 # The 10 test questions over the two sample PDFs (data/sample_pdfs/).
 # Every expected value is recomputed from scripts/make_sample_pdfs.py's constants by
-# tests/unit/test_eval_questions.py. `expected_tables` are Table names as ingestion names them.
+# tests/unit/test_eval_questions.py. `expected_tables` identify Tables by PDF file name and the
+# `p<page>-t<position>` suffix of their table_id (deterministic); `name` is only a human label.
 
 - id: q01
   question: "What was ACME's net revenue in 2023?"
@@ -8,7 +9,7 @@
   expected_status: answered
   expected_values:
     - {name: net_revenue_2023, value: 1288.7}
-  expected_tables: ["Income summary"]
+  expected_tables: [{file: acme-annual-report-2023.pdf, table: p1-t1, name: "Income summary"}]
   expected_answer: "ACME's net revenue in 2023 was USD 1,288.7 million (Income summary, acme-annual-report-2023.pdf, page 1)."
 
 - id: q02
@@ -17,7 +18,7 @@
   expected_status: answered
   expected_values:
     - {name: net_sales_2022_usd_millions, value: 1322.0}
-  expected_tables: ["Monthly net sales"]
+  expected_tables: [{file: acme-annual-report-2023.pdf, table: p4-t1, name: "Monthly net sales"}]
   expected_answer: "The twelve months of 2022 add up to USD 1,322,000.0 thousand, that is USD 1,322.0 million (Monthly net sales, pages 4-5)."
 
 - id: q03
@@ -26,7 +27,7 @@
   expected_status: answered
   expected_values:
     - {name: tasa_de_desempleo_cuyo_2023, value: 5.4, unit: percent}
-  expected_tables: ["Indicadores del mercado laboral por región"]
+  expected_tables: [{file: informe-regional-2024.pdf, table: p1-t2, name: "Labour market indicators by region"}]
   expected_answer: "La tasa de desempleo de Cuyo en 2023 fue 5,4 % (Indicadores del mercado laboral por región, informe-regional-2024.pdf, página 1)."
 
 - id: q04
@@ -35,7 +36,9 @@
   expected_status: answered
   expected_values:
     - {name: rd_share_of_net_revenue_2023, value: 8.76, unit: percent}
-  expected_tables: ["Income summary", "Research and development expenses and staff"]
+  expected_tables:
+    - {file: acme-annual-report-2023.pdf, table: p1-t1, name: "Income summary"}
+    - {file: acme-annual-report-2023.pdf, table: p1-t2, name: "Research and development expenses and staff"}
   expected_answer: "In 2023 R&D expenses of USD 112.9 million were 8.76 % of the USD 1,288.7 million net revenue (Research and development expenses and staff; Income summary; page 1)."
 
 - id: q05
@@ -44,7 +47,9 @@
   expected_status: answered
   expected_values:
     - {name: net_sales_per_inhabitant_patagonia_2023_usd, value: 82.38}
-  expected_tables: ["Net sales by region and market share", "Población por región"]
+  expected_tables:
+    - {file: acme-annual-report-2023.pdf, table: p2-t1, name: "Net sales by region and market share"}
+    - {file: informe-regional-2024.pdf, table: p1-t1, name: "Population by region"}
   expected_answer: "Patagonia's 2023 net sales of USD 239.8 million over 2,910.8 thousand inhabitants give about USD 82.38 per inhabitant (Net sales by region and market share, ACME page 2; Población por región, informe page 1)."
 
 - id: q06
@@ -69,7 +74,7 @@
   expected_status: partial
   expected_values:
     - {name: rd_expenses_2023, value: 112.9}
-  expected_tables: ["Research and development expenses and staff"]
+  expected_tables: [{file: acme-annual-report-2023.pdf, table: p1-t2, name: "Research and development expenses and staff"}]
   expected_answer: "R&D expenses in 2023 were USD 112.9 million (page 1); advertising spending is not reported in any table."
 
 - id: q09
@@ -78,7 +83,7 @@
   expected_status: partial
   expected_values:
     - {name: market_share_patagonia_2023, value: 13.1, unit: percent}
-  expected_tables: ["Net sales by region and market share"]
+  expected_tables: [{file: acme-annual-report-2023.pdf, table: p2-t1, name: "Net sales by region and market share"}]
   expected_answer: "ACME's market share in Patagonia in 2023 was 13.1 % (page 2); the table has no national row, so the comparison cannot be made."
 
 - id: q10
